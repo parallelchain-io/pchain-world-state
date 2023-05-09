@@ -405,9 +405,9 @@ impl<S: WorldStateStorage + Send + Sync + Clone> WorldState<S>{
     }
 
     /// Create AccountState by opening world state from an address.
-    pub fn account_state(&self, address: pchain_types::PublicAddress) -> AccountState<S> {
-        let storage_hash = self.account_storage_hash(&address).unwrap();
-        AccountState::open_from_world_state(self, &address, storage_hash)
+    pub fn account_state(&self, address: pchain_types::PublicAddress) -> Option<AccountState<S>> {
+        let storage_hash = self.account_storage_hash(&address)?;
+        Some(AccountState::open_from_world_state(self, &address, storage_hash))
     }
 
     /// Get values from account storage with vector of application key Return a hashmap of AppKey-value pairs. 
@@ -505,7 +505,7 @@ impl<S: WorldStateStorage + Send + Sync + Clone> WorldState<S>{
     /// return None in two conditions:
     /// 1. the address is an External owned account, or 
     /// 2. the address is a contract account, but no storage data is saved before
-    fn account_storage_hash(&self, address: &pchain_types::PublicAddress) -> Option<pchain_types::Sha256Hash>{
+    pub fn account_storage_hash(&self, address: &pchain_types::PublicAddress) -> Option<pchain_types::Sha256Hash>{
         let acc_storage_key = WSKey::for_protected_account_data(address, protected_account_data::STORAGE_HASH);
 
         let storage_hash = self.trie.get_key(&acc_storage_key);

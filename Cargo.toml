@@ -1,6 +1,6 @@
 [package]
 name = "pchain-world-state"
-version = "0.4.0"
+version = "0.4.1"
 authors = ["ParallelChain Lab <info@parallelchain.io>"]
 edition = "2018"
 description = "Definitions of structs, functions, and methods for read-write world state from and into a persistent storage in ParallelChain F"
@@ -14,3 +14,6 @@ keccak-hasher = "0.15.3"
 pchain-types = { git = "https://github.com/parallelchain-io/pchain-types" }
 reference-trie = "0.25.0"
 trie-db = "0.23.1"
+
+[dev-dependencies]
+rand = "0.7"

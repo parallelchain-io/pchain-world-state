@@ -55,7 +55,7 @@ impl<'a, T, V> IndexHeap<'a, T, V>
         self.replace(0, first_v, length - 1, last_v);
         self.set_length(length - 1);
 
-        self.make_heap(0, length - 1);
+        self.down_heapify(0, length - 1);
         
         Some(ret)
     }
@@ -67,22 +67,11 @@ impl<'a, T, V> IndexHeap<'a, T, V>
             return Err(IndexHeapOperationError)
         }
 
-        let mut index = length;
+        let index = length;
         self.set(index, value);
         self.set_length(length + 1);
 
-        loop {
-            if index == 0 { break }
-            let parent =  (index - 1) /2;
-            let parent_v = self.get(parent).unwrap();
-            let value = self.get(index).unwrap();
-            if value < parent_v {
-                self.swap(index, value, parent, parent_v);
-                index = parent;
-            } else {
-                break;
-            }
-        }
+        self.up_heapify(index);
 
         Ok(())
     }
@@ -116,31 +105,20 @@ impl<'a, T, V> IndexHeap<'a, T, V>
     /// Change key of a value that exists in the heap.
     pub fn change_key(&mut self, value: V) {
         let length = self.length();
-        let mut index = match self.index_of_key(value.key()){
+        let index = match self.index_of_key(value.key()){
             Some(index) if index < length => index,
             _ => return
         };
         let old_value = self.get(index).unwrap();
         
-        // increase key
         if old_value < value {
+            // increase key
             self.set(index, value);
-            self.make_heap(index, length);
-        } else if value < old_value {
+            self.down_heapify(index, length);
+        } else if old_value > value {
             // decrease key
             self.set(index, value);
-            loop {
-                if index == 0 { break }
-                let parent = (index - 1) / 2;
-                let value = self.get(index).unwrap();
-                let parent_v = self.get(parent).unwrap();
-                if value < parent_v {
-                    self.swap(index, value, parent, parent_v);
-                    index = parent;
-                } else {
-                    break;
-                }
-            }
+            self.up_heapify(index);
         } // else unchanged
 
     }
@@ -158,36 +136,37 @@ impl<'a, T, V> IndexHeap<'a, T, V>
     /// Remove an keyed item.
     pub fn remove_item(&mut self, key: &[u8]) {
         let length = self.length();
-        let mut index = match self.index_of_key(key){
+        let index = match self.index_of_key(key){
             Some(index) if index < length => index,
             _ => return
         };
 
+        // boundary item. Simplest operation
         if index == 0 { self.extract(); return }
-
+        if index == length - 1 {
+            self.delete(index, key);
+            self.set_length(length - 1);
+            return;
+        }
+    
+        // extract the root (the item to be removed)
         let this_v = self.get(index).unwrap();
         let last_v = self.get(length - 1).unwrap();
-
+        let is_downward = this_v < last_v;
+        let is_upward = this_v > last_v;
         self.replace(index, this_v, length - 1, last_v);
         self.set_length(length - 1);
 
-        loop {
-            if index == 0 { break }
-            let parent = (index - 1) / 2;
-            let value = self.get(index).unwrap();
-            let parent_v = self.get(parent).unwrap();
-            if value < parent_v {
-                self.swap(index, value, parent, parent_v);
-                index = parent;
-            } else {
-                break;
-            }
-        }
+        if is_downward {
+            self.down_heapify(index, length - 1);
+        } else if is_upward {
+            self.up_heapify(index);
+        } // else unchanged
 
     }
 
-    /// Create heap structures given an index.
-    fn make_heap(&mut self, mut index: u32, length: u32) {
+    /// Create heap structures given an index by moving indexed element downward
+    fn down_heapify(&mut self, mut index: u32, length: u32) {
         loop {
             let left = 2 * index + 1;
             let right = 2 * index + 2;
@@ -211,6 +190,22 @@ impl<'a, T, V> IndexHeap<'a, T, V>
                 let head_v = self.get(head).unwrap();
                 self.swap(index, value, head, head_v);
                 index = head;
+            } else {
+                break;
+            }
+        }
+    }
+
+    /// Create heap structures given an index by moving indexed element upward
+    fn up_heapify(&mut self, mut index: u32) {
+        loop {
+            if index == 0 { break }
+            let parent = (index - 1) / 2;
+            let value = self.get(index).unwrap();
+            let parent_v = self.get(parent).unwrap();
+            if value < parent_v {
+                self.swap(index, value, parent, parent_v);
+                index = parent;
             } else {
                 break;
             }
@@ -343,13 +338,6 @@ fn test_binary_heap() {
     // one key for length, two keys for each record
     assert_eq!(kv.inner.len(), 1 + 7 * 2 );
 
-    // kv.inner.iter().for_each(|kv|{
-    //     if kv.0[0] == 2 {
-    //         println!("K: {:?} V: {:?}", kv.0, TestU32::from(kv.1.clone()));
-    //     }
-
-    // });
-
     // Extract elements
     {
         let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 32);
@@ -412,6 +400,13 @@ fn test_binary_heap() {
         assert_eq!(values.len(), 3);
     }
     assert_eq!(kv.inner.len(), 1 + 3 * 2 );
+    {
+        let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 32);
+        heap.remove_item("fan".to_string().as_bytes()); // the heaviest item
+        let values = heap.unordered_values();
+        assert_eq!(values.len(), 2);
+    }
+    assert_eq!(kv.inner.len(), 1 + 2 * 2 );
 
     // Clear all
     {
@@ -445,4 +440,104 @@ fn test_binary_heap() {
         assert_eq!(heap.length(), 65535);
     }
     assert_eq!(kv.inner.len(), 1 + 65535 * 2 );
+
+    // Check if heap maintains order correctly
+    fn check_order(mut heap: IndexHeap<KVStore, TestU32>) -> (TestU32, TestU32) {
+        let mut check_key = std::collections::HashSet::new();
+        let mut last_v = heap.extract().unwrap();
+        let first_v = last_v.clone();
+        check_key.insert(first_v.key().to_vec());
+        while let Some(v) = heap.extract() {
+            let v_key = v.key().to_vec();
+            assert!(!check_key.contains(&v_key)); // no duplicated key!
+            check_key.insert(v_key);
+            assert!(last_v < v); // order is maintained!
+            last_v = v;
+        }
+        (first_v, last_v)
+    }
+
+    fn check_unchanged_items(old_items: Vec<TestU32>, new_items: Vec<TestU32>, except: Option<Vec<u8>>) {
+        let mut old_set = std::collections::HashMap::new();
+        for item in old_items { 
+            if except == Some(item.key().to_vec()) {
+                continue;
+            }
+            old_set.insert(item.key().to_vec(), item); 
+        }
+        for item in new_items {
+            if let Some(old_item) = old_set.get(&item.key().to_vec()) {
+                assert_eq!(old_item.data, item.data);
+            }
+        }
+    }
+
+    fn random_heap(kv: &mut KVStore, start: u32, end: u32) -> IndexHeap<KVStore, TestU32> {
+        let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], kv, end-start);
+        let mut items = vec![];
+        for i in start..end {
+            items.push(TestU32 { name: i.to_string(), data: i*2 as u32 });
+        }
+        while !items.is_empty() {
+            let i = rand::random::<usize>() % items.len();
+            let item = items.remove(i);
+            heap.insert(item).unwrap();
+        }
+        return heap;
+    }
+
+    // iteration test to check if Order is maintained for insert
+    for t in 1..130 {
+        let mut kv = KVStore { inner: HashMap::new() };
+        let mut heap = random_heap(&mut kv, 1, 129);
+        assert!(heap.length() == 128);
+        let old_items = heap.unordered_values();
+
+        let result = heap.insert(TestU32 { name: format!("i_{t}").to_string(), data: t*2 - 1 });
+        if result.is_ok() {
+            assert!(heap.get_by(&format!("i_{t}").to_string().as_bytes()).is_some());
+        }
+        assert!(heap.length() == 128);
+        let new_items = heap.unordered_values();
+
+        check_order(heap);
+        check_unchanged_items(old_items, new_items, None);
+    }
+
+    // iteration test to check if Order is maintained for remove
+    for t in 1..129 {
+        let mut kv = KVStore { inner: HashMap::new() };
+        let mut heap = random_heap(&mut kv, 1, 129);
+        assert!(heap.length() == 128);
+        let old_items = heap.unordered_values();
+
+        heap.remove_item(&t.to_string().as_bytes());
+        assert!(heap.get_by(&t.to_string().as_bytes()).is_none());
+        assert!(heap.length() == 127);
+        let new_items = heap.unordered_values();
+
+        check_order(heap);
+        check_unchanged_items(old_items, new_items, None);
+    }
+
+    // iteration test to check if Order is maintained for change key
+    for _ in 0..20 {
+        let mut kv = KVStore { inner: HashMap::new() };
+        let mut heap = random_heap(&mut kv, 100, 228);
+        assert!(heap.length() == 128);
+        let old_items = heap.unordered_values();
+
+        let random_key: u32 = rand::random::<u32>() % 128_u32 + 100;
+        let mut random_value: u32 = rand::random::<u32>() % 500_u32;
+        if random_value >= 100 && random_value <= 228*2 && random_value % 2 == 0 {
+            random_value += 1; //make it odd number to avoid same weight.
+        }
+        heap.change_key(TestU32 { name: random_key.to_string(), data: random_value });
+        assert!(heap.get_by(&random_key.to_string().as_bytes()).is_some());
+        assert!(heap.length() == 128);
+        let new_items = heap.unordered_values();
+
+        check_order(heap);
+        check_unchanged_items(old_items, new_items, Some(random_key.to_string().as_bytes().to_vec()));
+    }
 }

@@ -43,10 +43,9 @@ where
     /// length of the IndexMap. Lenght of an empty or uninitialized IndexMap = 0.
     pub fn length(&self) -> u32 {
         let key_len = [self.domain.as_slice(), &Self::PREFIX_LEN].concat();
-        match self.store.get(&key_len) {
-            Some(length_bytes) => u32::from_le_bytes(length_bytes.try_into().unwrap()),
-            None => 0
-        }
+        self.store.get(&key_len).map_or(0, |length_bytes|{
+            u32::from_le_bytes(length_bytes.try_into().unwrap())
+        })
     }
 
     /// get value by key from IndexMap
@@ -68,37 +67,21 @@ where
         Ok(())
     }
 
-    /// Set all values to the index map from beginning. Clear the previous values if the new length is shorter
+    /// Set all values to the index map from beginning. Equivalent to clear all and then push all.
     pub fn reset(&mut self, value: Vec<V>) -> Result<(), IndexMapOperationError> {
         let v_len = value.len() as u32;
         if v_len > self.capacity {
             return Err(IndexMapOperationError)
         }
+        
+        // Clear the previous values
+        self.clear();
 
-        let org_len = self.length();
-        let del_len = std::cmp::min(v_len, org_len);
-
-        // delete KI only is enough, because IV will be overwrote
-        for i in 0..del_len {
-            if let Some(origin_value) = self.get(i) {
-                let key_ki = [self.domain.as_slice(), &Self::PREFIX_KEY_INDEX, origin_value.key()].concat();
-                self.store.delete(&key_ki);
-            }
-        }        
-
-        let mut len = 0;
-        value.into_iter().for_each(|v|{
-            self.set(len, v);
-            len += 1;
+        // Set the new values
+        value.into_iter().enumerate().for_each(|(i, v)|{
+            self.set(i as u32, v);
         });
-
-        for i in len..org_len {
-            if let Some(v) = self.get(i) {
-                self.delete(i, v.key());
-            }
-        }
-
-        self.set_length(len);
+        self.set_length(v_len);
 
         Ok(())
     }

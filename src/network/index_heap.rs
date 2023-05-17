@@ -111,16 +111,19 @@ impl<'a, T, V> IndexHeap<'a, T, V>
         };
         let old_value = self.get(index).unwrap();
         
-        if old_value < value {
-            // increase key
-            self.set(index, value);
-            self.down_heapify(index, length);
-        } else if old_value > value {
-            // decrease key
-            self.set(index, value);
-            self.up_heapify(index);
-        } // else unchanged
-
+        match old_value.cmp(&value) {
+            std::cmp::Ordering::Less => {
+                // increase key
+                self.set(index, value);
+                self.down_heapify(index, length);
+            },
+            std::cmp::Ordering::Greater => {
+                // decrease key
+                self.set(index, value);
+                self.up_heapify(index);
+            },
+            std::cmp::Ordering::Equal => {} // unchanged
+        }
     }
 
     /// Return values by iterating over the index. Prefix with `unordered` to avoid confuse about the ordering of the values.
@@ -269,7 +272,7 @@ fn test_binary_heap() {
     struct TestU32 { name: String, data: u32}
     impl Into<Vec<u8>> for TestU32 {
         fn into(self) -> Vec<u8> {
-            use pchain_types::Serializable;
+            use pchain_types::serialization::Serializable;
             <(Vec<u8>, u32)>::serialize(&(
                 self.name.as_bytes().to_vec(),
                 self.data
@@ -278,7 +281,7 @@ fn test_binary_heap() {
     }
     impl From<Vec<u8>> for TestU32 {
         fn from(bytes: Vec<u8>) -> Self {
-            use pchain_types::Deserializable;
+            use pchain_types::serialization::Deserializable;
             let r = <(Vec<u8>, u32)>::deserialize(&bytes).unwrap();
             Self { name: String::from_utf8(r.0).unwrap(), data: r.1 }
         }

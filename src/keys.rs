@@ -3,14 +3,8 @@
     Licensed under the Apache License, Version 2.0: http://www.apache.org/licenses/LICENSE-2.0
 */
 
-//! Definition of the different logical notions of 'Key's and 'AppVisibility's that worldstate uses its implementation to improve clarity.
+//! Definition of Keys that Parallelchain-F are used to writes into persistent storage.
 //! 
-//! pchain-worldstate has:
-//! 1. 3 notions of 'key': `AppKey`, `WSKey`, `KeyspacedKey`.
-//! 2. `PrefixedTrieNodeKey`
-//!
-//! These concepts guide how Parallelchain-F writes into persistent storage. Each of these concepts
-//! are explained in more detail in the itemdocs below.\
 
 use std::{
     convert::TryInto,
@@ -68,7 +62,7 @@ pub(crate) enum WSKey {
 }
 
 impl WSKey {
-    pub(crate) fn for_public_account_state(app_key: &AppKey) -> WSKey {
+    pub(crate) fn for_public_account_storage_state(app_key: &AppKey) -> WSKey {
         let mut key: Vec<u8> = Vec::with_capacity(size_of::<u8>() + app_key.len());
         key.push(ws_key_visibility::PUBLIC);
         key.extend_from_slice(app_key);
@@ -76,8 +70,8 @@ impl WSKey {
         WSKey::Public(key)
     }
 
-    pub(crate) fn for_protected_account_data(address: &pchain_types::PublicAddress, item: ProtectedAccountData) -> WSKey {
-        let mut key: Vec<u8> = Vec::with_capacity(size_of::<pchain_types::PublicAddress>() + size_of::<u8>() + size_of::<u8>());
+    pub(crate) fn for_protected_account_data(address: &pchain_types::cryptography::PublicAddress, item: ProtectedAccountData) -> WSKey {
+        let mut key: Vec<u8> = Vec::with_capacity(size_of::<pchain_types::cryptography::PublicAddress>() + size_of::<u8>() + size_of::<u8>());
         key.extend_from_slice(address);
         key.push(ws_key_visibility::PROTECTED);
         key.push(item);

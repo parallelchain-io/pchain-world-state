@@ -7,7 +7,23 @@
 
 use std::{convert::TryInto};
 
-use super::{network_account::NetworkAccountStorage};
+use pchain_types::serialization::{Serializable, Deserializable};
+
+use super::network_account::NetworkAccountStorage;
+
+/// Deposit is the locked balance of an account for a particular pool. 
+/// It determines the limit of voting power that the owner can delegate. 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, borsh::BorshSerialize, borsh::BorshDeserialize)]
+pub struct Deposit {
+    /// Balance of this deposit
+    pub balance: u64,
+    /// Flag to indicate whether the received reward in epoch transaction should be automatically
+    /// staked to the pool
+    pub auto_stake_rewards: bool,
+}
+
+impl Serializable for Deposit {}
+impl Deserializable for Deposit {}
 
 /// DepositDict defines key formatting for dictionary-like read-write operations to Deposit state in a Network Account.
 pub struct DepositDict<'a, S>

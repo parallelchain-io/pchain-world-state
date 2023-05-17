@@ -5,20 +5,20 @@
 
 //! Error handling behaviour of this crate.
 
-/// WorldStateError enumerates the possible error of pchain_world_state::WorldState. 
+/// WorldStateError enumerates the possible error of [WorldState](crate::states::WorldState). 
 #[derive(Debug)]
 pub enum WorldStateError {
-    // Attempted to create a trie with a state root not in the database.
+    /// Attempted to create a trie with a state root not in the database.
 	InvalidStateRoot,
-	// Trie item not found in the database,
+	/// Trie item not found in the database,
 	IncompleteDatabase,
-    // A value was found in the trie with a nibble key that was not byte-aligned.
+    /// A value was found in the trie with a nibble key that was not byte-aligned.
 	ValueAtIncompleteKey,
-	// Corrupt Trie item.
+	/// Corrupt Trie item.
 	DecoderError,
-	// Encoded node contains invalid hash reference.
+	/// Encoded node contains invalid hash reference.
 	InvalidHash,
-    // Attempted to convert protected WSKey to AppKey
+    /// Attempted to convert protected WSKey to AppKey
     ProtectedKey
 }
 

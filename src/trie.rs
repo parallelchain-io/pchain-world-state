@@ -7,6 +7,7 @@
 //! get key and proof from the trie.
 
 use std::{convert::TryInto, collections::HashMap};
+use pchain_types::cryptography::Sha256Hash;
 use reference_trie::NoExtensionLayout;
 use trie_db::{TrieDB, TrieDBMut,TrieMut, proof::generate_proof, Trie};
 use hash_db::{AsHashDB, HashDB, HashDBRef, Hasher as KeyHasher, Prefix};
@@ -17,7 +18,6 @@ use crate::{
     error::WorldStateError
 };
 
-pub type Key = Vec<u8>;
 pub type Value = Vec<u8>;
 pub type Proof = Vec<Vec<u8>>;
 type RefHasher = keccak_hasher::KeccakHasher;
@@ -27,18 +27,18 @@ type Hash256 = [u8; 32];
 /// required to atomically persist a new, correct world state into persistent storage. MPT provides `get`s methods to read trie data from a persistent storage 
 /// that implemented the trait storage::WorldStateStorage. 
 #[derive(Clone)]
-pub(crate) struct MPT<S>
+pub(crate) struct Mpt<S>
 where S: WorldStateStorage + Send + Sync + Clone{
     storage: KeyspacedInstrumentedDB<S>,
-    primary_state_hash: pchain_types::Sha256Hash,
-    state_hash: pchain_types::Sha256Hash,
+    primary_state_hash: Sha256Hash,
+    state_hash: Sha256Hash,
 }
 
-impl<S: WorldStateStorage + Send + Sync + Clone> MPT<S>{
+impl<S: WorldStateStorage + Send + Sync + Clone> Mpt<S>{
     /// initialize is to create a new Trie with empty state hash. This is a tool to prepares the `write_set` that contains all 
     /// storage mutations by genesis transactions. The `write_set` will be used to initialize persistent storage managed by Hotstuff.
     /// This function should be called only once, during the first startup of fullnode.
-    pub(crate) fn new(mut storage: KeyspacedInstrumentedDB<S>) -> MPT<S>{
+    pub(crate) fn new(mut storage: KeyspacedInstrumentedDB<S>) -> Mpt<S>{
         let (mutation, state_hash) ={
             // build and commit empty MPT for genesis world state.
             let mut root_hash = Default::default();
@@ -46,7 +46,7 @@ impl<S: WorldStateStorage + Send + Sync + Clone> MPT<S>{
             let key = RefHasher::hash(&[0u8][..]);
             storage.put(key.to_vec(), [0u8].to_vec());
 
-            let mut genesis: MPT<S> = MPT { storage: storage.clone(), primary_state_hash: root_hash, state_hash: root_hash};
+            let mut genesis: Mpt<S> = Mpt { storage: storage.clone(), primary_state_hash: root_hash, state_hash: root_hash};
             let root = {
                 let mut trie = TrieDBMut::<NoExtensionLayout>::new(&mut genesis, &mut root_hash);
                 trie.commit();
@@ -59,13 +59,13 @@ impl<S: WorldStateStorage + Send + Sync + Clone> MPT<S>{
         // merge uncommitted changes to world state storage
         storage.merge(mutation);
         
-        MPT { storage, primary_state_hash: state_hash, state_hash}
+        Mpt { storage, primary_state_hash: state_hash, state_hash}
     }
 
     /// `open` is to open the world state from given storage source and state_hash. 
     /// Returns an error if root_hash does not exist or unable to open the trie.
-    pub(crate) fn open(storage: KeyspacedInstrumentedDB<S>, mut root_hash: pchain_types::Sha256Hash) -> Result<Self, WorldStateError> {
-        let mut mpt = MPT { storage, primary_state_hash: root_hash, state_hash: root_hash};
+    pub(crate) fn open(storage: KeyspacedInstrumentedDB<S>, mut root_hash: Sha256Hash) -> Result<Self, WorldStateError> {
+        let mut mpt = Mpt { storage, primary_state_hash: root_hash, state_hash: root_hash};
 
         let _= match TrieDBMut::<NoExtensionLayout>::from_existing(&mut mpt, &mut root_hash){
             Ok(t) => t,
@@ -163,7 +163,7 @@ impl<S: WorldStateStorage + Send + Sync + Clone> MPT<S>{
     }
 
     /// Consume MPT and returns the cached changes since state creation.
-    pub(crate) fn close(self) -> (StorageMutations, pchain_types::Sha256Hash){
+    pub(crate) fn close(self) -> (StorageMutations, Sha256Hash){
         (self.storage.commit(), self.state_hash)
     }
 
@@ -177,7 +177,7 @@ impl<S: WorldStateStorage + Send + Sync + Clone> MPT<S>{
 /// Implemented to meet a requirement of Parity's Base-16 Modified Merkle Tree ("Trie")
 /// Database must implement this HashDB trait to create mutable trie.
 /// Read more: https://docs.rs/trie-db/latest/trie_db/triedbmut/struct.TrieDBMut.html#method.new
-impl<S: WorldStateStorage + Send + Sync + Clone> HashDB<RefHasher, Value> for MPT<S>{
+impl<S: WorldStateStorage + Send + Sync + Clone> HashDB<RefHasher, Value> for Mpt<S>{
     // Look up a given hash into the bytes that hash to it, returning None if the hash is not known.
     fn get(&self, key: &Hash256, mpt_prefix: Prefix) -> Option<Value> {
         let key = PrefixedTrieNodeKey::<RefHasher>::key(key, mpt_prefix);
@@ -213,9 +213,9 @@ impl<S: WorldStateStorage + Send + Sync + Clone> HashDB<RefHasher, Value> for MP
 /// Implemented to meet a requirement of Parity's Base-16 Modified Merkle Tree ("Trie").
 /// Database must implement this HashDBRef trait to create immutable trie for querying and merkle proof.
 /// Read more: https://docs.rs/hash-db/latest/hash_db/trait.AsHashDB.html
-impl<S: WorldStateStorage + Send + Sync + Clone> AsHashDB<RefHasher, Value> for MPT<S>{
+impl<S: WorldStateStorage + Send + Sync + Clone> AsHashDB<RefHasher, Value> for Mpt<S>{
 	fn as_hash_db(&self) -> &dyn HashDB<RefHasher, Value> {
-		&*self
+		self
 	}
 
 	fn as_hash_db_mut<'b>(&'b mut self) -> &'b mut (dyn HashDB<RefHasher, Value> + 'b) {
@@ -226,7 +226,7 @@ impl<S: WorldStateStorage + Send + Sync + Clone> AsHashDB<RefHasher, Value> for 
 /// Implemented to meet a requirement of Parity's Base-16 Modified Merkle Tree ("Trie").
 /// Database must implement this HashDBRef trait to create immutable trie for querying and merkle proof.
 /// Read more: https://docs.rs/trie-db/latest/trie_db/triedb/struct.TrieDB.html#method.new
-impl<S: WorldStateStorage + Send + Sync + Clone> HashDBRef<RefHasher, Value> for MPT<S> {
+impl<S: WorldStateStorage + Send + Sync + Clone> HashDBRef<RefHasher, Value> for Mpt<S> {
     fn get(&self, key: &Hash256, mpt_prefix: Prefix) -> Option<Value> {
         HashDB::get(self, key, mpt_prefix)
     }

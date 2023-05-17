@@ -3,11 +3,10 @@
     Licensed under the Apache License, Version 2.0: http://www.apache.org/licenses/LICENSE-2.0
 */
 
-//! The trait [WorldStateStorage] for accessing data storage from WorldState.
+//! Definition of trait for accessing persistent storage from world state, and data structure of the world state changes.
 
 use std::collections::{HashMap, HashSet};
-
-use pchain_types::PublicAddress;
+use pchain_types::cryptography::{PublicAddress, Sha256Hash};
 
 use crate::keys::WSKey;
 
@@ -22,7 +21,7 @@ pub(crate) enum TrieLevel {
     /// The base Level of the world state data.
     WorldState,
     /// The level descented from [TrieLevel::WorldState] that represents a Storage Trie (MPT) associated with Contract Account. 
-    Storage(pchain_types::Sha256Hash)
+    Storage(Sha256Hash)
 }
 
 /// WorldStateStorage defines the methods that a type must implemented to be used as a persistent storage inside WorldState.
@@ -38,7 +37,7 @@ pub trait WorldStateStorage {
 pub struct WorldStateChanges {
     pub inserts: HashMap<Vec<u8>, Vec<u8>>,
     pub deletes: HashSet<Vec<u8>>,
-    pub next_state_hash: pchain_types::Sha256Hash,
+    pub next_state_hash: Sha256Hash,
 }
 
 /// Caches store lists of changes before insert to the trie in batch.
@@ -58,7 +57,7 @@ impl Caches{
         self.world_state.insert(key, value);
     }
 
-    pub(crate) fn insert_storage(&mut self, address: pchain_types::PublicAddress, key: WSKey, value: Value) {
+    pub(crate) fn insert_storage(&mut self, address: PublicAddress, key: WSKey, value: Value) {
         match self.storage.get_mut(&address){
             Some(list) => {
                 list.insert(key, value);

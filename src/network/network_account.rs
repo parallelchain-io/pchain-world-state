@@ -4,21 +4,22 @@
 */
 
 //! network_account defines key formatting for read-write operations to Network Account Storage. 
-//! It is a sub-format under keyspace format of [crate::states::WorldState].
+//! It is a sub-format under keyspace format of [WorldState](crate::states::WorldState).
  
 use std::convert::TryInto;
 
-use pchain_types::{PublicAddress};
+use pchain_types::cryptography::PublicAddress;
 
 use super::{
     pool::{PoolDict, ValidatorPool, PoolKey}, 
-    index_heap::IndexHeap, deposit::DepositDict
+    index_heap::IndexHeap, deposit::DepositDict, 
+    constants::{MAX_VALIDATOR_SET_SIZE, MAX_STAKES_PER_POOL}
 };
 
 /// Network Account with space size following to constants defined in protocol
-pub type NetworkAccount<'a, S> = NetworkAccountSized<'a, S, { pchain_types::MAX_VALIDATOR_SET_SIZE }, { pchain_types::MAX_STAKES_PER_POOL }>;
+pub type NetworkAccount<'a, S> = NetworkAccountSized<'a, S, { MAX_VALIDATOR_SET_SIZE }, { MAX_STAKES_PER_POOL }>;
 
-/// A Trait for key-value data source implementation of Network Account Storage.
+/// A trait for key-value data source implementation of Network Account Storage.
 pub trait NetworkAccountStorage {
     fn get(&self, key: &[u8]) -> Option<Vec<u8>>;
     fn contains(&self, key: &[u8]) -> bool;
@@ -26,7 +27,7 @@ pub trait NetworkAccountStorage {
     fn delete(&mut self, key: &[u8]);
 }
 
-/// A Trait of key definition that is used in Network Account specific structures such as IndexHeap and IndexMap.
+/// A trait of key definition that is used in Network Account specific structures such as IndexHeap and IndexMap.
 pub trait KeySpaced {
     fn key(&self) -> &[u8];
 }

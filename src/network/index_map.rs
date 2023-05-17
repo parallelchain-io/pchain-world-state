@@ -147,13 +147,13 @@ fn test_index_map() {
     struct TestString { name: String}
     impl Into<Vec<u8>> for TestString {
         fn into(self) -> Vec<u8> {
-            use pchain_types::Serializable;
+            use pchain_types::serialization::Serializable;
             Vec::<u8>::serialize(&self.name.as_bytes().to_vec())
         }
     }
     impl From<Vec<u8>> for TestString {
         fn from(bytes: Vec<u8>) -> Self {
-            use pchain_types::Deserializable;
+            use pchain_types::serialization::Deserializable;
             let r = Vec::<u8>::deserialize(&bytes).unwrap();
             Self { name: String::from_utf8(r).unwrap() }
         }

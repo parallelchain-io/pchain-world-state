@@ -8,7 +8,7 @@
 //! - Patricia Trie: An efficient Radix Trie (r=16), a data structure in which “keys” represent the path one has to take to reach a node
 //! - Merkle Tree: A hash tree in which each node’s hash is computed from its child nodes hashes.
 
-pub mod trie;
+pub(crate) mod trie;
 
 pub mod states;
 

@@ -9,14 +9,31 @@ use std::{
     ops::Deref, 
     convert::{TryInto, TryFrom}
 };
-use pchain_types::{Serializable, Deserializable, PublicAddress, Stake};
+use pchain_types::{ serialization::{Serializable, Deserializable}, cryptography::PublicAddress};
 
 use super::{
-    stake::StakeValue, 
+    stake::{Stake, StakeValue}, 
     network_account::{NetworkAccountStorage, KeySpaced}, 
     index_map::{IndexMap, IndexMapOperationError}, 
     index_heap::IndexHeap
 };
+
+/// Pool is the place that stake owners can stake to.
+#[derive(Debug, Clone, PartialEq, Eq, borsh::BorshSerialize, borsh::BorshDeserialize)]
+pub struct Pool {
+    /// Address of the pool's operator
+    pub operator: PublicAddress,
+    /// Commission rate (in unit of percentage) is the portion that 
+    /// the owners of its delegated stakes should pay from the reward in an epoch transaction.
+    pub commission_rate: u8,
+    /// Pool's power that determines the eligibility to be one of the validator
+    pub power: u64,
+    /// Operator's own stake
+    pub operator_stake: Option<Stake>
+}
+
+impl Serializable for Pool {}
+impl Deserializable for Pool {}
 
 /// PoolDict defines key formatting for dictionary-like read-write operations to Pool state in a Network Account.
 pub struct PoolDict<'a, S, const M: u16>
@@ -102,12 +119,12 @@ impl<'a, S, const M: u16> PoolDict<'a, S, M>
     }
 }
 
-impl<'a, S, const M: u16> TryFrom<PoolDict<'a, S, M>> for pchain_types::Pool 
+impl<'a, S, const M: u16> TryFrom<PoolDict<'a, S, M>> for Pool 
     where S: NetworkAccountStorage
 {
     type Error = ();
     fn try_from(pool: PoolDict<'a, S, M>) -> Result<Self, Self::Error> {
-        Ok(pchain_types::Pool { 
+        Ok(Pool { 
             operator: pool.operator().ok_or(())?, 
             commission_rate: pool.commission_rate().ok_or(())?, 
             power: pool.power().ok_or(())?, 
@@ -118,7 +135,7 @@ impl<'a, S, const M: u16> TryFrom<PoolDict<'a, S, M>> for pchain_types::Pool
 
 
 /// ValidatorPool defines the pool value to be stored in state of a Network Account. 
-/// Different from PoolDict, fields are stored as a single value in the Key-Value storage, 
+/// Different from [PoolDict], fields are stored as a single value in the Key-Value storage, 
 /// rather than assigning keyspaces to each fields as a dictionary.
 pub struct ValidatorPool<'a, S, const N: u16, const M: u16> where S: NetworkAccountStorage
 {
@@ -162,7 +179,7 @@ impl<'a, S, const N: u16, const M: u16> ValidatorPool<'a, S, N, M> where S: Netw
     }
 
     /// Push pool value to Index Map with reset of delegated stakes.
-    pub fn push(&'a mut self, pool: pchain_types::Pool, delegated_stakes: Vec<StakeValue>) -> Result<(), IndexMapOperationError> {
+    pub fn push(&'a mut self, pool: Pool, delegated_stakes: Vec<StakeValue>) -> Result<(), IndexMapOperationError> {
         // push pool address to the list first
         self.inner.push(PoolAddress(pool.operator))?;
 
@@ -214,9 +231,9 @@ impl KeySpaced for PoolAddress {
     }
 }
 
-impl Into<Vec<u8>> for PoolAddress {
-    fn into(self) -> Vec<u8> {
-        self.0.to_vec()
+impl From<PoolAddress> for Vec<u8>{
+    fn from(value: PoolAddress) -> Vec<u8> {
+        value.0.to_vec()
     }
 }
 
@@ -240,11 +257,11 @@ impl Deref for PoolAddress {
 }
 
 #[derive(Clone)]
+/// PoolKey is a small description of a pool. It affects the order of its representing pool in the Index Heap which is the state format of next validator set.
 pub struct PoolKey {
     pub operator: PublicAddress,
     pub power: u64
 }
-
 
 impl PoolKey {
     pub fn new(operator: PublicAddress, power: u64) -> Self {

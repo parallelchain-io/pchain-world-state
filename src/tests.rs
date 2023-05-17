@@ -6,28 +6,31 @@
 //! Unit Test on functionalities on this crate
 
 use std::{convert::TryInto, collections::HashMap};
+use pchain_types::cryptography::PublicAddress;
 
-use pchain_types::{Stake, Pool};
+use crate::network::{stake::Stake, pool::Pool, constants};
 
 use crate::{
-    trie::{Value, Key}, 
+    trie::Value, 
     storage::WorldStateStorage, 
     keys::AppKey, 
     states::WorldState, 
     network::{network_account::{NetworkAccount, NetworkAccountStorage}, 
-    pool::{PoolKey}, stake::StakeValue}
+    pool::PoolKey, stake::StakeValue}
 };
+
+pub type Key = Vec<u8>;
 
 struct TestEnv{
     db: DummyStorage,
-    address: pchain_types::PublicAddress
+    address: PublicAddress
 }
 
 impl Default for TestEnv{
     fn default() -> Self {
         let db = DummyStorage(HashMap::new());
         const PUBLIC_KEY: &str = "ipy_VXNiwHNP9mx6-nKxht_ZJNfYoMAcCnLykpq4x_k";
-        let address = pchain_types::Base64URL::decode(PUBLIC_KEY).unwrap().try_into().unwrap();
+        let address = base64url::decode(PUBLIC_KEY).unwrap().try_into().unwrap();
 
         Self { db, address }
     }
@@ -73,22 +76,22 @@ impl<S> NetworkAccountStorage for StorageWorldState<S>
 {
     fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
         let key = AppKey::new(key.to_vec());
-        self.inner.storage_value(&pchain_types::NETWORK_ADDRESS, &key)
+        self.inner.storage_value(&constants::NETWORK_ADDRESS, &key)
     }
     
     fn contains(&self, key: &[u8]) -> bool {
         let key = AppKey::new(key.to_vec());
-        self.inner.contains().storage_value(&pchain_types::NETWORK_ADDRESS, &key)
+        self.inner.contains().storage_value(&constants::NETWORK_ADDRESS, &key)
     }
 
     fn set(&mut self, key: &[u8], value: Vec<u8>) {
         let key = AppKey::new(key.to_vec());
-        self.inner.with_commit().set_storage_value(pchain_types::NETWORK_ADDRESS, key, value);
+        self.inner.with_commit().set_storage_value(constants::NETWORK_ADDRESS, key, value);
     }
 
     fn delete(&mut self, key: &[u8]) {
         let key = AppKey::new(key.to_vec());
-        self.inner.with_commit().set_storage_value(pchain_types::NETWORK_ADDRESS, key, Vec::new());
+        self.inner.with_commit().set_storage_value(constants::NETWORK_ADDRESS, key, Vec::new());
     }
 }
 
@@ -277,7 +280,7 @@ fn test_network_account() {
     let mut pools = NetworkAccount::pools(&mut ws, [1u8; 32]);
     let mut stakes = pools.delegated_stakes();
     assert_eq!(stakes.length(), 0);
-    stakes.push(StakeValue::new(pchain_types::Stake { owner: [2u8; 32], power: 10 })).unwrap();
+    stakes.push(StakeValue::new(Stake { owner: [2u8; 32], power: 10 })).unwrap();
     assert_eq!(stakes.length(), 1);
 
     let mut pools = NetworkAccount::pools(&mut ws, [1u8; 32]);

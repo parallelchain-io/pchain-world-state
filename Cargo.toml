@@ -1,17 +1,26 @@
 [package]
 name = "pchain-world-state"
-version = "0.4.1"
+version = "0.4.2"
 authors = ["ParallelChain Lab <info@parallelchain.io>"]
 edition = "2018"
-description = "Definitions of structs, functions, and methods for read-write world state from and into a persistent storage in ParallelChain F"
+description = "Definitions of structs, functions, and methods for read-write world state from and into a persistent storage in ParallelChain Protocol"
 license = "Apache-2.0"
 repository = "https://github.com/parallelchain-io/pchain-world-state"
+keywords = ["blockchain", "parallelchain", "crypto", "library"]
+categories = ["cryptography::cryptocurrencies"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+doctest = false
 
 [dependencies]
 anyhow = "1.0"
+pchain-types = "0.4.3"
+base64url = "0.1.0"
+borsh = "=0.10.2"
 hash-db = "0.15.2"
 keccak-hasher = "0.15.3"
-pchain-types = { git = "https://github.com/parallelchain-io/pchain-types" }
 reference-trie = "0.25.0"
 trie-db = "0.23.1"
 

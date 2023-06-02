@@ -1,32 +1,36 @@
 /*
-    Copyright © 2023, ParallelChain Lab 
+    Copyright © 2023, ParallelChain Lab
     Licensed under the Apache License, Version 2.0: http://www.apache.org/licenses/LICENSE-2.0
 */
 
 //! Unit Test on functionalities on this crate
 
-use std::{convert::TryInto, collections::HashMap};
 use pchain_types::cryptography::PublicAddress;
+use std::{collections::HashMap, convert::TryInto};
 
-use crate::network::{stake::Stake, pool::Pool, constants};
+use crate::error::WorldStateError;
+use crate::network::{constants, pool::Pool, stake::Stake};
 
 use crate::{
-    trie::Value, 
-    storage::WorldStateStorage, 
-    keys::AppKey, 
-    states::WorldState, 
-    network::{network_account::{NetworkAccount, NetworkAccountStorage}, 
-    pool::PoolKey, stake::StakeValue}
+    keys::AppKey,
+    network::{
+        network_account::{NetworkAccount, NetworkAccountStorage},
+        pool::PoolKey,
+        stake::StakeValue,
+    },
+    states::WorldState,
+    storage::WorldStateStorage,
+    trie::Value,
 };
 
 pub type Key = Vec<u8>;
 
-struct TestEnv{
+struct TestEnv {
     db: DummyStorage,
-    address: PublicAddress
+    address: PublicAddress,
 }
 
-impl Default for TestEnv{
+impl Default for TestEnv {
     fn default() -> Self {
         let db = DummyStorage(HashMap::new());
         const PUBLIC_KEY: &str = "ipy_VXNiwHNP9mx6-nKxht_ZJNfYoMAcCnLykpq4x_k";
@@ -36,67 +40,75 @@ impl Default for TestEnv{
     }
 }
 
-
 #[derive(Clone)]
 struct DummyStorage(HashMap<Key, Value>);
 
-impl DummyStorage{
-    fn apply_changes(&mut self, write_set: HashMap<Vec<u8>, Vec<u8>>){
+impl DummyStorage {
+    fn apply_changes(&mut self, write_set: HashMap<Vec<u8>, Vec<u8>>) {
         self.0 = write_set;
     }
 }
 
-impl WorldStateStorage for DummyStorage{
-    fn get(&self, key: &Key) -> Option<Value>{
-        match self.0.get(key){
+impl WorldStateStorage for DummyStorage {
+    fn get(&self, key: &Key) -> Option<Value> {
+        match self.0.get(key) {
             Some(value) => Some(value.to_owned()),
-            None => None
+            None => None,
         }
     }
 }
 
-pub struct StorageWorldState <S> 
-    where S: WorldStateStorage + Send + Sync + Clone 
+pub struct StorageWorldState<S>
+where
+    S: WorldStateStorage + Send + Sync + Clone,
 {
-    inner: WorldState<S>
+    inner: WorldState<S>,
 }
 
 impl<S> StorageWorldState<S>
-    where S: WorldStateStorage + Send + Sync + Clone 
+where
+    S: WorldStateStorage + Send + Sync + Clone,
 {
     fn initialize(storage: S) -> Self {
         Self {
-            inner: WorldState::initialize(storage)
+            inner: WorldState::initialize(storage),
         }
     }
 }
 
-impl<S> NetworkAccountStorage for StorageWorldState<S> 
-    where S: WorldStateStorage + Send + Sync + Clone 
+impl<S> NetworkAccountStorage for StorageWorldState<S>
+where
+    S: WorldStateStorage + Send + Sync + Clone,
 {
     fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
         let key = AppKey::new(key.to_vec());
         self.inner.storage_value(&constants::NETWORK_ADDRESS, &key)
     }
-    
+
     fn contains(&self, key: &[u8]) -> bool {
         let key = AppKey::new(key.to_vec());
-        self.inner.contains().storage_value(&constants::NETWORK_ADDRESS, &key)
+        self.inner
+            .contains()
+            .storage_value(&constants::NETWORK_ADDRESS, &key)
     }
 
     fn set(&mut self, key: &[u8], value: Vec<u8>) {
         let key = AppKey::new(key.to_vec());
-        self.inner.with_commit().set_storage_value(constants::NETWORK_ADDRESS, key, value);
+        self.inner
+            .with_commit()
+            .set_storage_value(constants::NETWORK_ADDRESS, key, value);
     }
 
     fn delete(&mut self, key: &[u8]) {
         let key = AppKey::new(key.to_vec());
-        self.inner.with_commit().set_storage_value(constants::NETWORK_ADDRESS, key, Vec::new());
+        self.inner
+            .with_commit()
+            .set_storage_value(constants::NETWORK_ADDRESS, key, Vec::new());
     }
 }
 
 #[test]
-fn update_nonce(){
+fn update_nonce() {
     let mut env = TestEnv::default();
     let mut genesis_ws = WorldState::initialize(env.db.clone());
 
@@ -104,14 +116,14 @@ fn update_nonce(){
     genesis_ws.cached().set_nonce(env.address, 1);
     let ws_changes = genesis_ws.commit_and_close();
     env.db.apply_changes(ws_changes.inserts);
-    
+
     let new_ws = WorldState::open(env.db, ws_changes.next_state_hash);
     assert!(new_ws.is_ok());
     assert_eq!(new_ws.unwrap().nonce(env.address), 1);
 }
 
 #[test]
-fn update_balance(){
+fn update_balance() {
     let mut env = TestEnv::default();
     let mut genesis_ws = WorldState::initialize(env.db.clone());
 
@@ -119,31 +131,31 @@ fn update_balance(){
     genesis_ws.cached().set_balance(env.address, 100_000);
     let ws_changes = genesis_ws.commit_and_close();
     env.db.apply_changes(ws_changes.inserts);
-    
+
     let new_ws = WorldState::open(env.db, ws_changes.next_state_hash);
     assert!(new_ws.is_ok());
     assert_eq!(new_ws.unwrap().balance(env.address), 100_000);
 }
 
 #[test]
-fn update_code(){
+fn update_code() {
     let mut env = TestEnv::default();
     let mut genesis_ws = WorldState::initialize(env.db.clone());
 
     assert!(genesis_ws.code(env.address).is_none());
-    genesis_ws.cached().set_code(env.address, vec![1_u8;100]);
+    genesis_ws.cached().set_code(env.address, vec![1_u8; 100]);
     let ws_changes = genesis_ws.commit_and_close();
     env.db.apply_changes(ws_changes.inserts);
-    
+
     let new_ws = WorldState::open(env.db, ws_changes.next_state_hash);
     assert!(new_ws.is_ok());
     let code = new_ws.unwrap().code(env.address);
     assert!(code.is_some());
-    assert_eq!(code.unwrap(), vec![1_u8;100]);
+    assert_eq!(code.unwrap(), vec![1_u8; 100]);
 }
 
 #[test]
-fn update_storage(){
+fn update_storage() {
     let mut env = TestEnv::default();
     let mut genesis_ws = WorldState::initialize(env.db.clone());
     // genesis_ws.set_balance(env.address, 100_000);
@@ -152,36 +164,42 @@ fn update_storage(){
     let app_value = b"1234".to_vec();
     assert!(genesis_ws.storage_value(&env.address, &app_key).is_none());
 
-    genesis_ws.cached().set_storage_value(env.address, app_key.clone(), app_value.clone());
+    genesis_ws
+        .cached()
+        .set_storage_value(env.address, app_key.clone(), app_value.clone());
     let ws_changes = genesis_ws.commit_and_close();
     env.db.apply_changes(ws_changes.inserts);
-    
+
     let new_ws = WorldState::open(env.db, ws_changes.next_state_hash);
     assert!(new_ws.is_ok());
     let mut new_ws = new_ws.unwrap();
     new_ws.cached().set_balance(env.address, 100_000);
-    
+
     let value = new_ws.storage_value(&env.address, &app_key);
     assert!(value.is_some());
     assert_eq!(value.unwrap(), app_value);
 }
 
 #[test]
-fn get_keys_from_account_storage(){
+fn get_keys_from_account_storage() {
     let mut env = TestEnv::default();
     let mut genesis_ws = WorldState::initialize(env.db.clone());
 
     let app_key1 = AppKey::new(b"123".to_vec());
     let app_value1 = b"abc".to_vec();
-    genesis_ws.cached().set_storage_value(env.address, app_key1.clone(), app_value1.clone());
+    genesis_ws
+        .cached()
+        .set_storage_value(env.address, app_key1.clone(), app_value1.clone());
 
     let app_key2 = AppKey::new(b"987".to_vec());
     let app_value2 = b"xyz".to_vec();
-    genesis_ws.cached().set_storage_value(env.address, app_key2.clone(), app_value2.clone());
-    
+    genesis_ws
+        .cached()
+        .set_storage_value(env.address, app_key2.clone(), app_value2.clone());
+
     let ws_changes = genesis_ws.commit_and_close();
     env.db.apply_changes(ws_changes.inserts);
-    
+
     let new_ws = WorldState::open(env.db, ws_changes.next_state_hash);
     assert!(new_ws.is_ok());
     let new_ws = new_ws.unwrap();
@@ -194,19 +212,21 @@ fn get_keys_from_account_storage(){
 }
 
 #[test]
-fn get_all_account_storage(){
+fn get_all_account_storage() {
     let mut env = TestEnv::default();
     let mut genesis_ws = WorldState::initialize(env.db.clone());
 
-    for i in 1_u8..=5{
+    for i in 1_u8..=5 {
         let app_key = AppKey::new(i.to_le_bytes().to_vec());
         let app_value = i.to_le_bytes().to_vec();
-        genesis_ws.cached().set_storage_value(env.address, app_key.clone(), app_value.clone());
+        genesis_ws
+            .cached()
+            .set_storage_value(env.address, app_key.clone(), app_value.clone());
     }
-    
+
     let ws_changes = genesis_ws.commit_and_close();
     env.db.apply_changes(ws_changes.inserts);
-    
+
     let new_ws = WorldState::open(env.db, ws_changes.next_state_hash);
     assert!(new_ws.is_ok());
     let new_ws = new_ws.unwrap();
@@ -216,7 +236,7 @@ fn get_all_account_storage(){
 }
 
 #[test]
-fn get_data_after_update(){
+fn get_data_after_update() {
     let mut env = TestEnv::default();
     let mut genesis_ws = WorldState::initialize(env.db.clone());
     // genesis_ws.set_balance(env.address, 100_000);
@@ -225,16 +245,20 @@ fn get_data_after_update(){
     let app_value = b"1234".to_vec();
     assert!(genesis_ws.storage_value(&env.address, &app_key).is_none());
 
-    genesis_ws.cached().set_storage_value(env.address, app_key.clone(), app_value.clone());
+    genesis_ws
+        .cached()
+        .set_storage_value(env.address, app_key.clone(), app_value.clone());
     let ws_changes = genesis_ws.commit_and_close();
     env.db.apply_changes(ws_changes.inserts);
-    
+
     // open updated world state and set new value
     let new_ws = WorldState::open(env.db, ws_changes.next_state_hash);
     assert!(new_ws.is_ok());
     let mut new_ws = new_ws.unwrap();
     let new_app_value = b"xyz".to_vec();
-    new_ws.cached().set_storage_value(env.address, app_key.clone(), new_app_value.clone());
+    new_ws
+        .cached()
+        .set_storage_value(env.address, app_key.clone(), new_app_value.clone());
     new_ws.commit();
     let value = new_ws.storage_value(&env.address, &app_key);
     assert!(value.is_some());
@@ -280,7 +304,12 @@ fn test_network_account() {
     let mut pools = NetworkAccount::pools(&mut ws, [1u8; 32]);
     let mut stakes = pools.delegated_stakes();
     assert_eq!(stakes.length(), 0);
-    stakes.push(StakeValue::new(Stake { owner: [2u8; 32], power: 10 })).unwrap();
+    stakes
+        .push(StakeValue::new(Stake {
+            owner: [2u8; 32],
+            power: 10,
+        }))
+        .unwrap();
     assert_eq!(stakes.length(), 1);
 
     let mut pools = NetworkAccount::pools(&mut ws, [1u8; 32]);
@@ -308,32 +337,98 @@ fn test_network_account_validator_set() {
     let env = TestEnv::default();
     let mut ws = StorageWorldState::initialize(env.db);
 
-    let pool_1 = Pool { 
-        operator: [1u8; 32], 
-        power: 600, 
-        commission_rate: 5, 
-        operator_stake: Some(Stake{ owner: [1u8; 32], power: 600 })
+    let pool_1 = Pool {
+        operator: [1u8; 32],
+        power: 600,
+        commission_rate: 5,
+        operator_stake: Some(Stake {
+            owner: [1u8; 32],
+            power: 600,
+        }),
     };
-    let pool_2 = Pool { 
-        operator: [5u8; 32], 
-        power: 60, 
-        commission_rate: 2, 
-        operator_stake: Some(Stake{ owner: [1u8; 32], power: 60 })
+    let pool_2 = Pool {
+        operator: [5u8; 32],
+        power: 60,
+        commission_rate: 2,
+        operator_stake: Some(Stake {
+            owner: [1u8; 32],
+            power: 60,
+        }),
     };
-    NetworkAccount::vp(&mut ws).push(pool_1.clone(), vec![]).unwrap();
-    NetworkAccount::vp(&mut ws).push(pool_2.clone(), vec![]).unwrap();
+    NetworkAccount::vp(&mut ws)
+        .push(pool_1.clone(), vec![])
+        .unwrap();
+    NetworkAccount::vp(&mut ws)
+        .push(pool_2.clone(), vec![])
+        .unwrap();
     assert_eq!(NetworkAccount::vp(&mut ws).length(), 2);
     assert_eq!(NetworkAccount::pvp(&mut ws).length(), 0);
-    NetworkAccount::pvp(&mut ws).push(pool_1.clone(), vec![]).unwrap();
+    NetworkAccount::pvp(&mut ws)
+        .push(pool_1.clone(), vec![])
+        .unwrap();
     assert_eq!(NetworkAccount::vp(&mut ws).length(), 2);
     assert_eq!(NetworkAccount::pvp(&mut ws).length(), 1);
 
     let mut nvp = NetworkAccount::nvp(&mut ws);
-    nvp.insert(PoolKey::new(pool_2.operator, pool_2.power)).unwrap();
-    nvp.insert(PoolKey::new(pool_1.operator, pool_1.power)).unwrap();
+    nvp.insert(PoolKey::new(pool_2.operator, pool_2.power))
+        .unwrap();
+    nvp.insert(PoolKey::new(pool_1.operator, pool_1.power))
+        .unwrap();
     assert_eq!(nvp.length(), 2);
     let top = nvp.extract().unwrap();
     assert_eq!(nvp.length(), 1);
     assert_eq!(top.operator, pool_2.operator);
     assert_eq!(top.power, pool_2.power);
+}
+
+#[test]
+fn test_invalid_state_hash() {
+    let mut env = TestEnv::default();
+    let genesis_ws = WorldState::initialize(env.db.clone());
+
+    let ws_changes = genesis_ws.commit_and_close();
+    env.db.apply_changes(ws_changes.inserts);
+
+    let invalid_state_hash = [0; 32];
+    let new_ws = WorldState::open(env.db, invalid_state_hash);
+    assert!(new_ws.is_err());
+    match new_ws {
+        Err(e) => {
+            assert_eq!(e, WorldStateError::InvalidStateRoot);
+        }
+        _ => unreachable!(),
+    }
+}
+
+#[test]
+#[should_panic]
+fn test_incomplete_db() {
+    let mut env = TestEnv::default();
+    let mut genesis_ws = WorldState::initialize(env.db.clone());
+
+    // insert dummy account data into world state
+    genesis_ws.cached().set_balance([1; 32], 100_000);
+    genesis_ws.cached().set_balance([2; 32], 100_000);
+    genesis_ws.cached().set_balance([3; 32], 100_000);
+    genesis_ws.cached().set_nonce([1; 32], 1);
+    genesis_ws.cached().set_nonce([2; 32], 1);
+    genesis_ws.cached().set_nonce([3; 32], 1);
+    let ws_changes = genesis_ws.commit_and_close();
+
+    // remove one trie node from database on purpose
+    let del = [
+        238, 169, 47, 11, 196, 133, 19, 56, 169, 46, 213, 74, 134, 96, 40, 211, 153, 143, 92, 72,
+        163, 172, 211, 108, 229, 241, 87, 140, 31, 23, 135, 17,
+    ]
+    .to_vec();
+    let mut incomplete_nodes = ws_changes.inserts.clone();
+    incomplete_nodes.retain(|k, _| k == &del);
+    assert_ne!(incomplete_nodes.len(), ws_changes.inserts.len());
+    // save the rest of the nodes to database
+    env.db.apply_changes(incomplete_nodes);
+
+    let new_ws = WorldState::open(env.db, ws_changes.next_state_hash);
+    // assert!(new_ws.is_err());
+    let new_ws = new_ws.unwrap();
+    let _ = new_ws.balance([1; 32]); //should panic
 }

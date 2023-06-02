@@ -14,7 +14,7 @@ In ParallelChain, we call the user-visible state that Mainnet maintains the “W
 // Here demonstrates how to create empty world state, update account information 
 // and save the world state into database(hashmap).
 
-// This is example address. Don't use this for real transaction.
+// This is an example address. Don't use this for real transactions.
 let address: pchain_types::cryptography::PublicAddress = [200, 49, 188, 70, 13, 208, 8, 5, 148, 104, 28, 81, 229, 202, 203, 180, 220, 187, 48, 162, 53, 122, 83, 233, 166, 97, 173, 217, 25, 172, 106, 53];
 
 // Step 1. prepare database that implement WorldStateStorage trait.

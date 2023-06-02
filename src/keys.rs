@@ -1,18 +1,18 @@
 /*
-    Copyright © 2023, ParallelChain Lab 
+    Copyright © 2023, ParallelChain Lab
     Licensed under the Apache License, Version 2.0: http://www.apache.org/licenses/LICENSE-2.0
 */
 
 //! Definition of Keys that Parallelchain-F are used to writes into persistent storage.
-//! 
+//!
 
+use hash_db::{Hasher as KeyHasher, Prefix};
 use std::{
     convert::TryInto,
+    marker::PhantomData,
     mem::size_of,
     ops::{Deref, DerefMut},
-    marker::PhantomData,
 };
-use hash_db::{Hasher as KeyHasher, Prefix};
 
 use crate::error::WorldStateError;
 
@@ -28,7 +28,7 @@ impl AppKey {
 
 impl From<AppKey> for Vec<u8> {
     fn from(app_key: AppKey) -> Self {
-        app_key.0 
+        app_key.0
     }
 }
 
@@ -45,14 +45,14 @@ impl DerefMut for AppKey {
     }
 }
 
-/// WSKeys are AppKeys prefixed by the account that they belong to, and their app_visibility: 
+/// WSKeys are AppKeys prefixed by the account that they belong to, and their app_visibility:
 /// For Protected :
 /// `${account}/${ws_key_visibility}/${account_key}`
 /// For Public:
 /// `${ws_key_visibility}/${account_key}`
-/// As all public data is stored in independent account storage for each account, 
+/// As all public data is stored in independent account storage for each account,
 /// the account prefix of WSKey is not required.
-/// 
+///
 /// WSKeys are typically constructed from AppKeys using the `to_ws_key` method of the latter
 /// type.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
@@ -70,8 +70,15 @@ impl WSKey {
         WSKey::Public(key)
     }
 
-    pub(crate) fn for_protected_account_data(address: &pchain_types::cryptography::PublicAddress, item: ProtectedAccountData) -> WSKey {
-        let mut key: Vec<u8> = Vec::with_capacity(size_of::<pchain_types::cryptography::PublicAddress>() + size_of::<u8>() + size_of::<u8>());
+    pub(crate) fn for_protected_account_data(
+        address: &pchain_types::cryptography::PublicAddress,
+        item: ProtectedAccountData,
+    ) -> WSKey {
+        let mut key: Vec<u8> = Vec::with_capacity(
+            size_of::<pchain_types::cryptography::PublicAddress>()
+                + size_of::<u8>()
+                + size_of::<u8>(),
+        );
         key.extend_from_slice(address);
         key.push(ws_key_visibility::PROTECTED);
         key.push(item);
@@ -106,7 +113,7 @@ impl AsRef<[u8]> for WSKey {
     }
 }
 
-impl TryInto<AppKey> for WSKey{
+impl TryInto<AppKey> for WSKey {
     type Error = WorldStateError;
 
     fn try_into(self) -> Result<AppKey, WorldStateError> {
@@ -115,7 +122,7 @@ impl TryInto<AppKey> for WSKey{
                 let mut full_wskey = key;
                 let unboxed_key = full_wskey.split_off(size_of::<u8>());
                 Ok(AppKey::new(unboxed_key))
-            },
+            }
             WSKey::Protected(_) => Err(WorldStateError::ProtectedKey),
         }
     }
@@ -128,7 +135,7 @@ pub(crate) mod ws_key_visibility {
 
     /// PUBLIC world state keys of an account is freely read and writable from inside smart contracts.
     pub(crate) const PUBLIC: WSKeyVisibility = 0x00;
-    
+
     /// PROTECTED world state keys of an account cannot be written from inside smart contracts.
     pub(crate) const PROTECTED: WSKeyVisibility = 0x01;
 }
@@ -139,31 +146,31 @@ pub(crate) mod protected_account_data {
     pub(crate) type ProtectedAccountData = u8;
 
     /// NONCE is the subkey used to store the number of transactions that an account has successfully included
-    /// in the blockchain. 
+    /// in the blockchain.
     pub(crate) const NONCE: ProtectedAccountData = 0x00;
 
     /// BALANCE is the subkey used to store the account's balance.
     pub(crate) const BALANCE: ProtectedAccountData = 0x01;
 
     /// CONTRACT_CODE is the subkey used to store the contract account's WASM bytecode. Obviously, it is not associated with
-    /// any value if the account is an External account. 
+    /// any value if the account is an External account.
     pub(crate) const CONTRACT_CODE: ProtectedAccountData = 0x02;
 
     /// CBI_VERISON is the subkey used to store the version of the Contract ABI that the Contract’s Code expects. It is not associated with
-    /// any value if the account is an External account. 
+    /// any value if the account is an External account.
     pub(crate) const CBI_VERISON: ProtectedAccountData = 0x03;
 
-    /// STORAGE_HASH is the root hash of Account's storage subtrie. This is not associated with any value if the account is 
-    /// an External account. 
+    /// STORAGE_HASH is the root hash of Account's storage subtrie. This is not associated with any value if the account is
+    /// an External account.
     pub(crate) const STORAGE_HASH: ProtectedAccountData = 0x04;
 }
 pub(crate) use protected_account_data::ProtectedAccountData;
 
-// WSProofNode is node in the trie traversed while performing lookups on the WSKey, prefixed by the trie level that they belong to: 
+// WSProofNode is node in the trie traversed while performing lookups on the WSKey, prefixed by the trie level that they belong to:
 /// `${proof_level}/${trie_node_key}`
 pub(crate) struct WSProofNode(Vec<u8>);
 
-impl WSProofNode{
+impl WSProofNode {
     pub(crate) fn new(level: ProofLevel, node_key: Vec<u8>) -> WSProofNode {
         let mut key: Vec<u8> = Vec::with_capacity(node_key.len() + size_of::<u8>());
         key.push(level);
@@ -171,7 +178,6 @@ impl WSProofNode{
 
         WSProofNode(key)
     }
-
 }
 
 impl From<WSProofNode> for Vec<u8> {
@@ -187,7 +193,7 @@ pub(crate) mod proof_level {
 
     /// WORLDSTATE is the proof of the storage hash in world state trie.
     pub(crate) const WORLDSTATE: ProofLevel = 0x00;
-    
+
     /// STORAGE is the proof of key inside smart contracts (AppKey) in storage tire.
     pub(crate) const STORAGE: ProofLevel = 0x01;
 }
@@ -199,13 +205,13 @@ pub(crate) struct PrefixedTrieNodeKey<H>(PhantomData<H>);
 impl<H: KeyHasher> PrefixedTrieNodeKey<H> {
     // Key function that concatenates prefix and hash.
     // Derive a database key from hash value of the node (key) and the node prefix.
-	pub(crate) fn key(hash: &H::Out, mpt_prefix: Prefix) -> Vec<u8> {
-		let mut prefixed_key = Vec::with_capacity(hash.as_ref().len() + mpt_prefix.0.len() + 1);
+    pub(crate) fn key(hash: &H::Out, mpt_prefix: Prefix) -> Vec<u8> {
+        let mut prefixed_key = Vec::with_capacity(hash.as_ref().len() + mpt_prefix.0.len() + 1);
         prefixed_key.extend_from_slice(mpt_prefix.0);
         if let Some(last) = mpt_prefix.1 {
             prefixed_key.push(last);
         }
         prefixed_key.extend_from_slice(hash.as_ref());
         prefixed_key
-	}
+    }
 }

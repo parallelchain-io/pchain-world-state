@@ -1,28 +1,28 @@
 /*
-    Copyright © 2023, ParallelChain Lab 
+    Copyright © 2023, ParallelChain Lab
     Licensed under the Apache License, Version 2.0: http://www.apache.org/licenses/LICENSE-2.0
 */
 
-//! Error handling behaviour of this crate.
+//! Error handling behavior of this crate.
 
-/// WorldStateError enumerates the possible error of [WorldState](crate::states::WorldState). 
-#[derive(Debug)]
+/// WorldStateError enumerates the possible error of [WorldState](crate::states::WorldState).
+#[derive(Debug, PartialEq, Eq)]
 pub enum WorldStateError {
     /// Attempted to create a trie with a state root not in the database.
-	InvalidStateRoot,
-	/// Trie item not found in the database,
-	IncompleteDatabase,
+    InvalidStateRoot,
+    /// Trie item not found in the database,
+    IncompleteDatabase,
     /// A value was found in the trie with a nibble key that was not byte-aligned.
-	ValueAtIncompleteKey,
-	/// Corrupt Trie item.
-	DecoderError,
-	/// Encoded node contains invalid hash reference.
-	InvalidHash,
+    ValueAtIncompleteKey,
+    /// Corrupt Trie item.
+    DecoderError,
+    /// Encoded node contains invalid hash reference.
+    InvalidHash,
     /// Attempted to convert protected WSKey to AppKey
-    ProtectedKey
+    ProtectedKey,
 }
 
-impl<T, E> From<trie_db::TrieError<T, E>> for WorldStateError{
+impl<T, E> From<trie_db::TrieError<T, E>> for WorldStateError {
     fn from(err: trie_db::TrieError<T, E>) -> Self {
         match err {
             trie_db::TrieError::InvalidStateRoot(_) => WorldStateError::InvalidStateRoot,

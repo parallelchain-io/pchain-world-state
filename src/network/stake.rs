@@ -1,12 +1,15 @@
 /*
-    Copyright ©& 2023, ParallelChain Lab 
+    Copyright ©& 2023, ParallelChain Lab
     Licensed under the Apache License, Version 2.0: http://www.apache.org/licenses/LICENSE-2.0
 */
 
 //! Definition of Key Format of Stake in Storage of Network Account
 
+use pchain_types::{
+    cryptography::PublicAddress,
+    serialization::{Deserializable, Serializable},
+};
 use std::ops::{Deref, DerefMut};
-use pchain_types::{serialization::{Deserializable, Serializable}, cryptography::PublicAddress};
 
 use super::network_account::KeySpaced;
 
@@ -16,13 +19,13 @@ pub struct Stake {
     /// Address of the owner of the stake
     pub owner: PublicAddress,
     /// Power of the stake
-    pub power: u64
+    pub power: u64,
 }
 
 impl Serializable for Stake {}
 impl Deserializable for Stake {}
 
-/// A Wrapper struct on [Stake] with implementation on Traits for orderring in data structures 
+/// A Wrapper struct on [Stake] with implementation on Traits for ordering in data structures
 /// of Network Account such as IndexMap and IndexHeap.
 #[derive(Clone, Eq)]
 pub struct StakeValue {
@@ -69,7 +72,7 @@ impl From<StakeValue> for Vec<u8> {
 impl From<Vec<u8>> for StakeValue {
     fn from(bytes: Vec<u8>) -> Self {
         Self {
-            inner: Stake::deserialize(&bytes).unwrap()
+            inner: Stake::deserialize(&bytes).unwrap(),
         }
     }
 }
@@ -98,14 +101,14 @@ fn test_stake() {
     let pool_1 = StakeValue {
         inner: Stake {
             power: 100,
-            owner: [2u8; 32]
-        }
+            owner: [2u8; 32],
+        },
     };
     let mut pool_2 = StakeValue {
         inner: Stake {
             power: 99,
-            owner: [3u8; 32]
-        }
+            owner: [3u8; 32],
+        },
     };
 
     assert!(pool_1.key() != pool_2.key());

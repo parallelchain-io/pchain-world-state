@@ -18,11 +18,11 @@ doctest = false
 anyhow = "1.0"
 pchain-types = "0.4.3"
 base64url = "0.1.0"
-borsh = "=0.10.2"
+borsh = "0.10.2"
 hash-db = "0.15.2"
 keccak-hasher = "0.15.3"
 reference-trie = "0.25.0"
 trie-db = "0.23.1"
 
 [dev-dependencies]
-rand = "0.7"
+rand = "0.8.5"

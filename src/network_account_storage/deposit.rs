@@ -30,8 +30,8 @@ pub struct DepositDict<'a, S>
 where
     S: NetworkAccountStorage,
 {
-    pub(in crate::network) prefix_key: Vec<u8>,
-    pub(in crate::network) world_state: &'a mut S,
+    pub(in crate::network_account_storage) prefix_key: Vec<u8>,
+    pub(in crate::network_account_storage) world_state: &'a mut S,
 }
 
 impl<'a, S> DepositDict<'a, S>
@@ -61,15 +61,30 @@ where
     }
 
     pub fn auto_stake_rewards(&self) -> Option<bool> {
-        self.world_state.get(&[self.prefix_key.as_slice(), &deposit_data::AUTO_STAKE_REWARDS].concat()).map(|bytes|{
-            bytes == [1u8; 1]
-        })
+        self.world_state
+            .get(
+                &[
+                    self.prefix_key.as_slice(),
+                    &deposit_data::AUTO_STAKE_REWARDS,
+                ]
+                .concat(),
+            )
+            .map(|bytes| bytes == [1u8; 1])
     }
 
     pub fn set_auto_stake_rewards(&mut self, auto_stake_rewards: bool) {
         self.world_state.set(
-            &[self.prefix_key.as_slice(), &deposit_data::AUTO_STAKE_REWARDS].concat(), 
-            if auto_stake_rewards { [1u8; 1] } else { [0u8; 1] }.to_vec()
+            &[
+                self.prefix_key.as_slice(),
+                &deposit_data::AUTO_STAKE_REWARDS,
+            ]
+            .concat(),
+            if auto_stake_rewards {
+                [1u8; 1]
+            } else {
+                [0u8; 1]
+            }
+            .to_vec(),
         );
     }
 

@@ -1,2 +1,8 @@
-/target
-Cargo.lock
+# Hidden macOS file system artifacts.
+*.DS_Store
+
+**/target
+**.lock
+.vscode
+
+**/tarpaulin-report

@@ -3,11 +3,21 @@
     Licensed under the Apache License, Version 2.0: http://www.apache.org/licenses/LICENSE-2.0
 */
 
-//! Error handling behavior of this crate.
+//! This mod define Errors of crate
 
-/// WorldStateError enumerates the possible error of [WorldState](crate::states::WorldState).
-#[derive(Debug, PartialEq, Eq)]
+use std::fmt::{self};
+
+/// `WorldStateError is wraper of errors triggled inside crate`
+#[derive(Debug)]
 pub enum WorldStateError {
+    MptError(MptError),
+    TrieKeyBuildError(TrieKeyBuildError),
+    DecodeOrEncodeError(DecodeOrEncodeError),
+}
+
+/// `MptError` is error from lib trie_db
+#[derive(Debug, PartialEq, Eq)]
+pub enum MptError {
     /// Attempted to create a trie with a state root not in the database.
     InvalidStateRoot,
     /// Trie item not found in the database,
@@ -18,18 +28,54 @@ pub enum WorldStateError {
     DecoderError,
     /// Encoded node contains invalid hash reference.
     InvalidHash,
-    /// Attempted to convert protected WSKey to AppKey
-    ProtectedKey,
+    /// Empty Trie
+    EmptyTrie,
 }
 
-impl<T, E> From<trie_db::TrieError<T, E>> for WorldStateError {
+/// `TrieKeyBuildError` is error triggled when create trie logic key
+#[derive(Debug, PartialEq, Eq)]
+pub enum TrieKeyBuildError {
+    /// Unrecognized [AccountField](crate::accounts::AccountField)
+    InvalidAccountField,
+    // Invalid PublicAddress
+    InvalidPublicAddress,
+    // other errors
+    Other,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum DecodeOrEncodeError {
+    DecodeError,
+    EncodeError,
+}
+
+impl fmt::Display for TrieKeyBuildError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self {
+            TrieKeyBuildError::InvalidAccountField => write!(f, "Invalid AccountField"),
+            TrieKeyBuildError::InvalidPublicAddress => write!(f, "Invalid PublicAddress"),
+            TrieKeyBuildError::Other => write!(f, "Other errors"),
+        }
+    }
+}
+
+impl fmt::Display for DecodeOrEncodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self {
+            DecodeOrEncodeError::DecodeError => write!(f, "Decode Error"),
+            DecodeOrEncodeError::EncodeError => write!(f, "Encode Error"),
+        }
+    }
+}
+
+impl<T, E> From<trie_db::TrieError<T, E>> for MptError {
     fn from(err: trie_db::TrieError<T, E>) -> Self {
         match err {
-            trie_db::TrieError::InvalidStateRoot(_) => WorldStateError::InvalidStateRoot,
-            trie_db::TrieError::IncompleteDatabase(_) => WorldStateError::IncompleteDatabase,
-            trie_db::TrieError::ValueAtIncompleteKey(_, _) => WorldStateError::ValueAtIncompleteKey,
-            trie_db::TrieError::DecoderError(_, _) => WorldStateError::DecoderError,
-            trie_db::TrieError::InvalidHash(_, _) => WorldStateError::InvalidHash,
+            trie_db::TrieError::InvalidStateRoot(_) => MptError::InvalidStateRoot,
+            trie_db::TrieError::IncompleteDatabase(_) => MptError::IncompleteDatabase,
+            trie_db::TrieError::ValueAtIncompleteKey(_, _) => MptError::ValueAtIncompleteKey,
+            trie_db::TrieError::DecoderError(_, _) => MptError::DecoderError,
+            trie_db::TrieError::InvalidHash(_, _) => MptError::InvalidHash,
         }
     }
 }

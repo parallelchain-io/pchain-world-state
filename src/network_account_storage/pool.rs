@@ -43,8 +43,8 @@ pub struct PoolDict<'a, S, const M: u16>
 where
     S: NetworkAccountStorage,
 {
-    pub(in crate::network) prefix_key: Vec<u8>,
-    pub(in crate::network) world_state: &'a mut S,
+    pub(in crate::network_account_storage) prefix_key: Vec<u8>,
+    pub(in crate::network_account_storage) world_state: &'a mut S,
 }
 
 impl<'a, S, const M: u16> PoolDict<'a, S, M>
@@ -174,9 +174,12 @@ where
     /// A single byte prefix key to partition the Pool values (as a nested IndexMap) and IndexMap ValidatorPool itself.
     /// ### Cautions
     /// The value 3u8 is chosen because the value 0u8, 1u8 and 2u8 are already chosen in IndexMap.
-    pub(in crate::network) const PREFIX_NESTED_MAP: [u8; 1] = [3u8];
+    pub(in crate::network_account_storage) const PREFIX_NESTED_MAP: [u8; 1] = [3u8];
 
-    pub(in crate::network) fn new(world_state: &'a mut S, prefix_key: Vec<u8>) -> Self {
+    pub(in crate::network_account_storage) fn new(
+        world_state: &'a mut S,
+        prefix_key: Vec<u8>,
+    ) -> Self {
         Self {
             inner: IndexMap::<S, PoolAddress>::new(prefix_key, world_state, N as u32),
         }

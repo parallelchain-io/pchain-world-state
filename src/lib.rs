@@ -1,24 +1,59 @@
-/*
-    Copyright © 2023, ParallelChain Lab
-    Licensed under the Apache License, Version 2.0: http://www.apache.org/licenses/LICENSE-2.0
-*/
+//! `pchain-world-state` is a library to provide operations on WorldState(Account information on blockchain) and AccountStorage(Contract account storage on blockchain)
+//!
+//! # Example
+//! ```ignore
+//! // init a genesis WorldState with old version
+//! let ws = WorldState::<DummyStorage, V1>::new(&storage);
+//! // set nonce for account
+//! ws.account_trie_mut().set_nonce(&address, 1_u64).unwrap();
+//! // set <key, value> to account storage
+//! ws.storage_trie_mut(&address).unwrap().set(&key, value).unwrap();
+//! // close and get changes as structure WorldStateChanges
+//! let ws_change = ws.close().unwrap();
+//! // caller need to apply the changes provided by WorldStateChanges to physical db
+//! // open WorldState after change
+//! let ws_after_change = WorldState::<DummyStorage, V1>::open(&storage, ws_change.new_root_hash);
+//! // get updated nonce
+//! let nonce = ws_after_change.account_trie().nonce(&address);
+//! // get updated account storage change
+//! let value = ws_after_change.storage_trie(&address).unwrap().get(&key);
+//! ```
+//!
+//! # Example
+//! ``` ignore
+//! // destroy the old world state ws1
+//! let destroy_return = ws1.destroy();
+//! // user need to apply the physical db change by destroy_return.inserts, and destroy_return.deletes
+//! // init the new world state ws2
+//! let ws2 = WorldState::<DummyStorage, V2>::new(&storage);
+//! // build the old world state in ws2
+//! let ws2_change = ws2.build(destroy_return.data_map);
+//! // user need to apply the physical db change by ws2_change.inserts, and ws2_change.deletes
+//! ```
 
-//! pchain-world-state defines structs, functions, and methods for reading and writing world state from and into a persistent storage.
-//! The world state is stored in Merkle Patricia Trie structure which is the combination of a:
-//! - Patricia Trie: An efficient Radix Trie (r=16), a data structure in which “keys” represent the path one has to take to reach a node
-//! - Merkle Tree: A hash tree in which each node’s hash is computed from its child nodes hashes.
+pub mod accounts_trie;
+pub use accounts_trie::*;
 
-pub(crate) mod trie;
-
-pub mod states;
-
-pub mod keys;
-
-pub mod storage;
+mod db;
+pub use db::DB;
 
 pub mod error;
+pub use error::*;
 
-pub mod network;
+mod trie_key;
 
-#[cfg(test)]
-mod tests;
+pub mod storage_trie;
+pub use storage_trie::*;
+
+mod mpt;
+
+mod proof_node;
+
+pub mod world_state;
+pub use world_state::*;
+
+pub mod version;
+pub use version::*;
+
+pub mod network_account_storage;
+pub use network_account_storage::*;

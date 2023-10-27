@@ -4,7 +4,7 @@
 */
 
 //! network_account defines key formatting for read-write operations to Network Account Storage.
-//! It is a sub-format under keyspace format of [WorldState](crate::states::WorldState).
+//! It is a sub-format under keyspace format of [WorldState](crate::world_state::WorldState).
 
 use std::convert::TryInto;
 

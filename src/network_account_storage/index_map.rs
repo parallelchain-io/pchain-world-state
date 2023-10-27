@@ -18,9 +18,9 @@ where
     T: NetworkAccountStorage,
     V: Clone + PartialEq + Eq + Into<Vec<u8>> + From<Vec<u8>> + KeySpaced,
 {
-    pub(in crate::network) store: &'a mut T,
-    pub(in crate::network) domain: Vec<u8>,
-    pub(in crate::network) capacity: u32,
+    pub(in crate::network_account_storage) store: &'a mut T,
+    pub(in crate::network_account_storage) domain: Vec<u8>,
+    pub(in crate::network_account_storage) capacity: u32,
     _phantom: PhantomData<V>,
 }
 
@@ -29,11 +29,15 @@ where
     T: NetworkAccountStorage,
     V: Clone + PartialEq + Eq + Into<Vec<u8>> + From<Vec<u8>> + KeySpaced,
 {
-    pub(in crate::network) const PREFIX_LEN: [u8; 1] = [0u8];
-    pub(in crate::network) const PREFIX_KEY_INDEX: [u8; 1] = [1u8];
-    pub(in crate::network) const PREFIX_INDEX_VALUE: [u8; 1] = [2u8];
+    pub(in crate::network_account_storage) const PREFIX_LEN: [u8; 1] = [0u8];
+    pub(in crate::network_account_storage) const PREFIX_KEY_INDEX: [u8; 1] = [1u8];
+    pub(in crate::network_account_storage) const PREFIX_INDEX_VALUE: [u8; 1] = [2u8];
 
-    pub(in crate::network) fn new(domain: Vec<u8>, store: &'a mut T, capacity: u32) -> Self {
+    pub(in crate::network_account_storage) fn new(
+        domain: Vec<u8>,
+        store: &'a mut T,
+        capacity: u32,
+    ) -> Self {
         Self {
             store,
             domain,
@@ -88,13 +92,13 @@ where
         Ok(())
     }
 
-    pub(in crate::network) fn set_length(&mut self, length: u32) -> u32 {
+    pub(in crate::network_account_storage) fn set_length(&mut self, length: u32) -> u32 {
         let key_len = [self.domain.as_slice(), &Self::PREFIX_LEN].concat();
         self.store.set(&key_len, length.to_le_bytes().to_vec());
         length
     }
 
-    pub(in crate::network) fn index_of_key(&self, key: &[u8]) -> Option<u32> {
+    pub(in crate::network_account_storage) fn index_of_key(&self, key: &[u8]) -> Option<u32> {
         let key_ki = [self.domain.as_slice(), &Self::PREFIX_KEY_INDEX, key].concat();
         self.store
             .get(&key_ki)
@@ -123,7 +127,7 @@ where
     /// Set performs writes:
     /// - KI\[value.key\] = index
     /// - IV\[index\] = value
-    pub(in crate::network) fn set(&mut self, index: u32, value: V) {
+    pub(in crate::network_account_storage) fn set(&mut self, index: u32, value: V) {
         let key_iv = [
             self.domain.as_slice(),
             &Self::PREFIX_INDEX_VALUE,
@@ -136,7 +140,7 @@ where
         self.store.set(&key_iv, value.into());
     }
 
-    pub(in crate::network) fn delete(&mut self, index: u32, key: &[u8]) {
+    pub(in crate::network_account_storage) fn delete(&mut self, index: u32, key: &[u8]) {
         let key_iv = [
             self.domain.as_slice(),
             &Self::PREFIX_INDEX_VALUE,

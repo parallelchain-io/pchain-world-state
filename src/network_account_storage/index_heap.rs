@@ -30,7 +30,11 @@ where
     T: NetworkAccountStorage,
     V: Clone + PartialEq + Eq + PartialOrd + Ord + Into<Vec<u8>> + From<Vec<u8>> + KeySpaced,
 {
-    pub(in crate::network) fn new(domain: Vec<u8>, store: &'a mut T, capacity: u32) -> Self {
+    pub(in crate::network_account_storage) fn new(
+        domain: Vec<u8>,
+        store: &'a mut T,
+        capacity: u32,
+    ) -> Self {
         Self {
             inner: IndexMap::new(domain, store, capacity),
         }

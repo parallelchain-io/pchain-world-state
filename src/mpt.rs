@@ -198,18 +198,21 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
         }
     }
 
-    /// `all` DFS to loop all <key, value> pairs in MPT
-    ///
-    /// Error when state_hash does not exist or missed some trie nodes
-    pub(crate) fn all(&self) -> Result<HashMap<Vec<u8>, Vec<u8>>, MptError> {
-        let mut ret_map = HashMap::new();
+    /// `iterate_all` in DFS approach to iterate all key-value pairs in MPT by a function. The iteration may
+    /// end earlier if it fails to obtain key-value from the trie (e.g. state_hash does
+    /// not exist or missed some trie nodes), or the function returns error.
+    pub(crate) fn iterate_all<F, E>(&self, mut f: F) -> Result<(), E> 
+    where 
+        F: FnMut(Vec<u8>, Vec<u8>) -> Result<(), E>,
+        E: From<MptError>
+    {
         match <V>::version() {
             Version::V1 => {
                 let trie = TrieDBBuilder::<NoExtensionLayout>::new(self, &self.root_hash).build();
                 let trie_iter = trie.iter().map_err(|err| MptError::from(*err))?;
                 for item in trie_iter {
                     let (key, value) = item.map_err(|err| MptError::from(*err))?;
-                    ret_map.insert(key, value);
+                    f(key, value)?;
                 }
             }
             Version::V2 => {
@@ -217,11 +220,11 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
                 let trie_iter = trie.iter().map_err(|err| MptError::from(*err))?;
                 for item in trie_iter {
                     let (key, value) = item.map_err(|err| MptError::from(*err))?;
-                    ret_map.insert(key, value);
+                    f(key, value)?;
                 }
             }
         }
-        Ok(ret_map)
+        Ok(())
     }
 
     /// `set` is set <key, value> pair to Trie

@@ -83,13 +83,16 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     ///
     /// Error if storage_hash does not exists or missed some trie nodes
     pub fn all(&self) -> Result<HashMap<Vec<u8>, Vec<u8>>, WorldStateError> {
-        let storage_map = self.trie.all().map_err(WorldStateError::MptError)?;
         let mut ret_map: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
-        for (key, value) in storage_map.into_iter() {
+
+        self.trie.iterate_all(|key, value| {
             let storage_key = TrieKey::<V>::drop_visibility_type(&key)
                 .map_err(WorldStateError::TrieKeyBuildError)?;
             ret_map.insert(storage_key, value);
-        }
+
+            Ok::<(), WorldStateError>(())
+        })?;
+
         Ok(ret_map)
     }
 
@@ -115,10 +118,11 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
 
     /// `remove trie` is to clear the target StorageTrie and inside the target account
     pub fn remove_trie(&mut self) -> Result<(), MptError> {
-        let mut key_set: HashSet<Vec<u8>> = HashSet::new();
-        for (key, _) in self.trie.all()? {
+        let mut key_set = HashSet::new();
+        self.trie.iterate_all(|key, _| {
             key_set.insert(key);
-        }
+            Ok::<(), MptError>(())
+        })?;
         // batch delete keys
         self.trie.batch_remove(&key_set)
     }

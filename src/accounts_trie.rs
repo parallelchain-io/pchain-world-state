@@ -237,18 +237,28 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     ///
     /// Error if state_hash does not exist or missed some trie nodes
     pub fn all(&self) -> Result<HashMap<PublicAddress, Account>, WorldStateError> {
-        let account_map = self.trie.all().map_err(WorldStateError::MptError)?;
         let mut ret_map: HashMap<PublicAddress, Account> = HashMap::new();
-        for (key, value) in account_map.into_iter() {
+
+        self.trie.iterate_all(|key, value| {
+
+            // Get the account address and the field from the key
             let account_address =
                 TrieKey::<V>::account_address(&key).map_err(WorldStateError::TrieKeyBuildError)?;
-            let mut account_value: Account = match ret_map.get(&account_address) {
-                Some(account) => account.clone(),
-                None => Account::default(),
-            };
-            let account_filed: AccountField =
+
+            let account_field =
                 TrieKey::<V>::account_field(&key).map_err(WorldStateError::TrieKeyBuildError)?;
-            match account_filed {
+
+            // Get mutable reference to the account from the account map.
+            let account_value = match ret_map.get_mut(&account_address) {
+                Some(account) => account,
+                None => {
+                    ret_map.insert(account_address, Account::default());
+                    ret_map.get_mut(&account_address).unwrap()
+                }
+            };
+
+            // Set the account according to account field
+            match account_field {
                 AccountField::Nonce => {
                     account_value.nonce = u64::from_le_bytes(value.try_into().map_err(|_| {
                         WorldStateError::DecodeOrEncodeError(DecodeOrEncodeError::DecodeError)
@@ -268,8 +278,10 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
                 }
                 AccountField::StorageHash => account_value.set_storage_hash(value),
             }
-            ret_map.insert(account_address, account_value);
-        }
+
+            Ok::<(), WorldStateError>(())
+        })?;
+
         Ok(ret_map)
     }
 

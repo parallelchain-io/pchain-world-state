@@ -15,6 +15,12 @@ pub enum WorldStateError {
     DecodeOrEncodeError(DecodeOrEncodeError),
 }
 
+impl From<MptError> for WorldStateError {
+    fn from(error: MptError) -> Self {
+        Self::MptError(error)
+    }
+}
+
 /// `MptError` is error from lib trie_db
 #[derive(Debug, PartialEq, Eq)]
 pub enum MptError {
@@ -30,6 +36,18 @@ pub enum MptError {
     InvalidHash,
     /// Empty Trie
     EmptyTrie,
+}
+
+impl<T, E> From<trie_db::TrieError<T, E>> for MptError {
+    fn from(err: trie_db::TrieError<T, E>) -> Self {
+        match err {
+            trie_db::TrieError::InvalidStateRoot(_) => MptError::InvalidStateRoot,
+            trie_db::TrieError::IncompleteDatabase(_) => MptError::IncompleteDatabase,
+            trie_db::TrieError::ValueAtIncompleteKey(_, _) => MptError::ValueAtIncompleteKey,
+            trie_db::TrieError::DecoderError(_, _) => MptError::DecoderError,
+            trie_db::TrieError::InvalidHash(_, _) => MptError::InvalidHash,
+        }
+    }
 }
 
 /// `TrieKeyBuildError` is error triggled when create trie logic key
@@ -64,18 +82,6 @@ impl fmt::Display for DecodeOrEncodeError {
         match &self {
             DecodeOrEncodeError::DecodeError => write!(f, "Decode Error"),
             DecodeOrEncodeError::EncodeError => write!(f, "Encode Error"),
-        }
-    }
-}
-
-impl<T, E> From<trie_db::TrieError<T, E>> for MptError {
-    fn from(err: trie_db::TrieError<T, E>) -> Self {
-        match err {
-            trie_db::TrieError::InvalidStateRoot(_) => MptError::InvalidStateRoot,
-            trie_db::TrieError::IncompleteDatabase(_) => MptError::IncompleteDatabase,
-            trie_db::TrieError::ValueAtIncompleteKey(_, _) => MptError::ValueAtIncompleteKey,
-            trie_db::TrieError::DecoderError(_, _) => MptError::DecoderError,
-            trie_db::TrieError::InvalidHash(_, _) => MptError::InvalidHash,
         }
     }
 }

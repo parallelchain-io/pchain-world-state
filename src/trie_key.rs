@@ -77,32 +77,36 @@ impl<V: VersionProvider> TrieKey<V> {
 
     /// `account_field` is to seperate the AccountField from [AccountsTrie](crate::accounts_trie::AccountsTrie) Key
     pub(crate) fn account_field(key: &[u8]) -> Result<AccountField, TrieKeyBuildError> {
-        let mut full_key = key.to_owned();
-        let account_field_byte: Vec<u8> = match <V>::version() {
-            Version::V1 => full_key.split_off(size_of::<PublicAddress>() + size_of::<u8>()),
-            Version::V2 => full_key.split_off(size_of::<PublicAddress>()),
+        let account_field_byte_index = match <V>::version() {
+            Version::V1 => size_of::<PublicAddress>() + size_of::<u8>(),
+            Version::V2 => size_of::<PublicAddress>(),
         };
-        account_field_byte[0].try_into()
+
+        if key.len() <= account_field_byte_index {
+            return Err(TrieKeyBuildError::InvalidAccountField);
+        }
+
+        AccountField::try_from(key[account_field_byte_index])
     }
 
     /// `account_address` is to seperate the account address from [AccountsTrie](crate::accounts_trie::AccountsTrie) Key
     pub(crate) fn account_address(key: &[u8]) -> Result<PublicAddress, TrieKeyBuildError> {
-        let mut full_key = key.to_owned();
-        _ = full_key.split_off(size_of::<PublicAddress>());
-        match full_key.try_into() {
-            Ok(public_address) => Ok(public_address),
-            Err(_) => Err(TrieKeyBuildError::InvalidPublicAddress),
+        if key.len() < size_of::<PublicAddress>() {    
+            return Err(TrieKeyBuildError::InvalidPublicAddress);
         }
+        
+        key[..size_of::<PublicAddress>()]
+            .try_into()
+            .map_err(|_| TrieKeyBuildError::InvalidPublicAddress)
     }
 
     /// `drop_visibility_type` is to drop the visibility byte from [AccountsTrie](crate::accounts_trie::AccountsTrie) Key
-    pub(crate) fn drop_visibility_type(key: &[u8]) -> Vec<u8> {
-        let mut full_key = key.to_owned();
-        let ret_key: Vec<u8> = match <V>::version() {
-            Version::V1 => full_key.split_off(size_of::<u8>()),
-            Version::V2 => full_key,
-        };
-        ret_key
+    pub(crate) fn drop_visibility_type(key: &[u8]) -> Result<Vec<u8>, TrieKeyBuildError> {
+        if key.len() < size_of::<u8>() {
+            return Err(TrieKeyBuildError::Other);
+        }
+
+        Ok(key[size_of::<u8>()..].to_vec())
     }
 }
 

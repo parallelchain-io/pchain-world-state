@@ -126,7 +126,7 @@ fn update_nonce() {
     let new_ws_v1 = WorldState::<DummyStorage, V1>::open(&env_1.db, ws_changes_v1.new_root_hash);
     assert!(new_ws_v1
         .account_trie()
-        .contains(&env_1.address, AccountField::Nonce)
+        .contains_nonce(&env_1.address)
         .unwrap(),);
     assert_eq!(
         new_ws_v1.account_trie().nonce(&env_1.address).unwrap(),
@@ -150,7 +150,7 @@ fn update_nonce() {
     let new_ws_v2 = WorldState::<DummyStorage, V2>::open(&env_2.db, ws_changes_v2.new_root_hash);
     assert!(new_ws_v2
         .account_trie()
-        .contains(&env_2.address, AccountField::Nonce)
+        .contains_nonce(&env_2.address)
         .unwrap(),);
     assert_eq!(
         new_ws_v2.account_trie().nonce(&env_2.address).unwrap(),

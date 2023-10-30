@@ -86,7 +86,8 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         let storage_map = self.trie.all().map_err(WorldStateError::MptError)?;
         let mut ret_map: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
         for (key, value) in storage_map.into_iter() {
-            let storage_key: Vec<u8> = TrieKey::<V>::drop_visibility_type(&key);
+            let storage_key = TrieKey::<V>::drop_visibility_type(&key)
+                .map_err(WorldStateError::TrieKeyBuildError)?;
             ret_map.insert(storage_key, value);
         }
         Ok(ret_map)
@@ -103,15 +104,13 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     /// `set` is to set/update <Key, Value> pair in StorageTrie
     pub fn set(&mut self, key: &Vec<u8>, value: Vec<u8>) -> Result<(), MptError> {
         let storage_key: Vec<u8> = TrieKey::<V>::storage_key(key);
-        self.trie.set(&storage_key, value)?;
-        Ok(())
+        self.trie.set(&storage_key, value)
     }
 
     /// `remove` is to remove key in StorageTrie
     pub fn remove(&mut self, key: &Vec<u8>) -> Result<(), MptError> {
         let storage_key: Vec<u8> = TrieKey::<V>::storage_key(key);
-        self.trie.remove(&storage_key)?;
-        Ok(())
+        self.trie.remove(&storage_key)
     }
 
     /// `remove trie` is to clear the target StorageTrie and inside the target account
@@ -155,8 +154,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
             let storage_key: Vec<u8> = TrieKey::<V>::storage_key(key);
             storage_data_set.insert(storage_key, value.clone());
         }
-        self.trie.batch_set(&storage_data_set)?;
-        Ok(())
+        self.trie.batch_set(&storage_data_set)
     }
 
     /// `close` called by [WorldState](crate::world_state::WorldState) return all cached updates in current StorageTrie and updated storage_hash
@@ -191,7 +189,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
                 let mut key_set: HashSet<Vec<u8>> = HashSet::new();
                 for item in storage_iter {
                     let (key, value) = item.map_err(|err| MptError::from(*err))?;
-                    let storage_key: Vec<u8> = TrieKey::<V>::drop_visibility_type(&key);
+                    let storage_key: Vec<u8> = TrieKey::<V>::drop_visibility_type(&key).unwrap(); // TODO avoid unwrap
                     data_map.insert(storage_key, value);
                     key_set.insert(key);
                 }
@@ -214,7 +212,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
                 let mut key_set: HashSet<Vec<u8>> = HashSet::new();
                 for item in storage_iter {
                     let (key, value) = item.map_err(|err| MptError::from(*err))?;
-                    let storage_key: Vec<u8> = TrieKey::<V>::drop_visibility_type(&key);
+                    let storage_key: Vec<u8> = TrieKey::<V>::drop_visibility_type(&key).unwrap(); // TODO avoid unwrap
                     data_map.insert(storage_key, value);
                     key_set.insert(key);
                 }

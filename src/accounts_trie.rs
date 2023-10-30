@@ -71,7 +71,7 @@ impl Account {
 
 /// `AccountField` prefix to identify the data type belong to [AccountsTrie](crate::accounts::AccountsTrie)
 #[repr(u8)]
-pub enum AccountField {
+pub(crate) enum AccountField {
     Nonce = 0,
     Balance = 1,
     ContractCode = 2,
@@ -79,11 +79,11 @@ pub enum AccountField {
     StorageHash = 4,
 }
 
-impl TryInto<AccountField> for u8 {
+impl TryFrom<u8> for AccountField {
     type Error = TrieKeyBuildError;
 
-    fn try_into(self) -> Result<AccountField, TrieKeyBuildError> {
-        match self {
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
             0_u8 => Ok(AccountField::Nonce),
             1_u8 => Ok(AccountField::Balance),
             2_u8 => Ok(AccountField::ContractCode),
@@ -273,40 +273,64 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         Ok(ret_map)
     }
 
-    /// `contains` is to check if account field data exsists or not
+    /// `contains_nonce` is to check if account field `Nonce` exists in the world state
     ///
     /// Error when state_hash does not exist or missed some trie nodes
-    pub fn contains(
-        &self,
-        address: &PublicAddress,
-        account_field: AccountField,
-    ) -> Result<bool, MptError> {
-        let key: Vec<u8> = TrieKey::<V>::account_key(address, account_field);
-        let exists = self.trie.contains(&key)?;
-        Ok(exists)
+    pub fn contains_nonce(&self, address: &PublicAddress) -> Result<bool, MptError> {
+        let key = TrieKey::<V>::account_key(address, AccountField::Nonce);
+        self.trie.contains(&key)
+    }
+
+    /// `contains_balance` is to check if account field `Balance` exists in the world state
+    ///
+    /// Error when state_hash does not exist or missed some trie nodes
+    pub fn contains_balance(&self, address: &PublicAddress) -> Result<bool, MptError> {
+        let key = TrieKey::<V>::account_key(address, AccountField::Balance);
+        self.trie.contains(&key)
+    }
+
+    /// `contains_code` is to check if account field `Code` exists in the world state
+    ///
+    /// Error when state_hash does not exist or missed some trie nodes
+    pub fn contains_code(&self, address: &PublicAddress) -> Result<bool, MptError> {
+        let key = TrieKey::<V>::account_key(address, AccountField::ContractCode);
+        self.trie.contains(&key)
+    }
+
+    /// `contains_cbi_version` is to check if account field `CBI Version` exists in the world state
+    ///
+    /// Error when state_hash does not exist or missed some trie nodes
+    pub fn contains_cbi_version(&self, address: &PublicAddress) -> Result<bool, MptError> {
+        let key = TrieKey::<V>::account_key(address, AccountField::CbiVersion);
+        self.trie.contains(&key)
+    }
+
+    /// `contains_storage_hash` is to check if account field `Storage Hash` exists in the world state
+    ///
+    /// Error when state_hash does not exist or missed some trie nodes
+    pub fn contains_storage_hash(&self, address: &PublicAddress) -> Result<bool, MptError> {
+        let key = TrieKey::<V>::account_key(address, AccountField::StorageHash);
+        self.trie.contains(&key)
     }
 
     /// `set_nonce` is to set/update account nonce
     pub fn set_nonce(&mut self, address: &PublicAddress, nonce: u64) -> Result<(), MptError> {
-        let nonce_key: Vec<u8> = TrieKey::<V>::account_key(address, AccountField::Nonce);
+        let nonce_key = TrieKey::<V>::account_key(address, AccountField::Nonce);
         let value = nonce.to_le_bytes().to_vec();
-        self.trie.set(&nonce_key, value)?;
-        Ok(())
+        self.trie.set(&nonce_key, value)
     }
 
     /// `set_balance` is to set/update account balance
     pub fn set_balance(&mut self, address: &PublicAddress, balance: u64) -> Result<(), MptError> {
-        let balance_key: Vec<u8> = TrieKey::<V>::account_key(address, AccountField::Balance);
+        let balance_key = TrieKey::<V>::account_key(address, AccountField::Balance);
         let value = balance.to_le_bytes().to_vec();
-        self.trie.set(&balance_key, value)?;
-        Ok(())
+        self.trie.set(&balance_key, value)
     }
 
     /// `set_code` is to set contract code of contract account
     pub fn set_code(&mut self, address: &PublicAddress, code: Vec<u8>) -> Result<(), MptError> {
-        let code_key: Vec<u8> = TrieKey::<V>::account_key(address, AccountField::ContractCode);
-        self.trie.set(&code_key, code)?;
-        Ok(())
+        let code_key = TrieKey::<V>::account_key(address, AccountField::ContractCode);
+        self.trie.set(&code_key, code)
     }
 
     /// `set_cbi_version` is to set/update account cbi_version
@@ -315,10 +339,9 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         address: &PublicAddress,
         cbi_version: u32,
     ) -> Result<(), MptError> {
-        let cbi_version_key: Vec<u8> = TrieKey::<V>::account_key(address, AccountField::CbiVersion);
+        let cbi_version_key = TrieKey::<V>::account_key(address, AccountField::CbiVersion);
         let value = cbi_version.to_le_bytes().to_vec();
-        self.trie.set(&cbi_version_key, value)?;
-        Ok(())
+        self.trie.set(&cbi_version_key, value)
     }
 
     /// Get the value with the proof from the account trie given a key. Each node in the proof is
@@ -368,8 +391,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         let storage_hash_key: Vec<u8> =
             TrieKey::<V>::account_key(address, AccountField::StorageHash);
         let value = storage_hash.to_vec();
-        self.trie.set(&storage_hash_key, value)?;
-        Ok(())
+        self.trie.set(&storage_hash_key, value)
     }
 
     /// `close` called by [WorldState](crate::world_state::WorldState) return all cached updates in AccountTrie and updated root_hash of AccountTrie

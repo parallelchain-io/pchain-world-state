@@ -11,16 +11,19 @@
 use std::collections::{HashMap, HashSet};
 
 use pchain_types::cryptography::{PublicAddress, Sha256Hash};
-
-use crate::db::{KeyInstrumentedDB, DB};
-use crate::error::{DecodeOrEncodeError, MptError, TrieKeyBuildError, WorldStateError};
-use crate::mpt::{Mpt, Proof};
-use crate::proof_node::{proof_level, WSProofNode};
-use crate::trie_key::TrieKey;
-use crate::version::*;
-use crate::world_state::{DestroyWorldStateChanges, WorldStateChanges};
 use reference_trie::{ExtensionLayout, NoExtensionLayout};
 use trie_db::{Trie, TrieDBBuilder};
+
+use crate::{
+    db::{KeyInstrumentedDB, DB},
+    error::{DecodeOrEncodeError, MptError, TrieKeyBuildError, WorldStateError},
+    mpt::{Mpt, Proof},
+    proof_node::{proof_level, WSProofNode},
+    trie_key::TrieKey,
+    world_state::{DestroyWorldStateChanges, WorldStateChanges},
+    Version, VersionProvider,
+};
+
 /// Struct store external account information in blockchain
 #[derive(Debug, Clone)]
 pub struct AccountsTrie<'a, S, V>
@@ -31,7 +34,7 @@ where
     trie: Mpt<'a, S, V>,
 }
 /// `Account` store information about account and return to caller when caller iter the [AccountsTrie](crate::accounts::AccountsTrie)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Account {
     pub nonce: u64,
     pub balance: u64,
@@ -39,19 +42,6 @@ pub struct Account {
     pub cbi_version: u32,
     pub storage_hash: Vec<u8>,
     pub storages: HashMap<Vec<u8>, Vec<u8>>,
-}
-
-impl Default for Account {
-    fn default() -> Self {
-        Self {
-            nonce: 0_u64,
-            balance: 0_u64,
-            code: vec![],
-            cbi_version: 0_u32,
-            storage_hash: vec![],
-            storages: HashMap::new(),
-        }
-    }
 }
 
 impl Account {
@@ -114,12 +104,10 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     ///
     /// Error if state_hash does not exist or missed some trie nodes
     pub fn nonce(&self, address: &PublicAddress) -> Result<u64, MptError> {
-        let nonce_key: Vec<u8> = TrieKey::<V>::account_key(address, AccountField::Nonce);
-        if let Some(value) = self.trie.get(&nonce_key)? {
-            Ok(u64::from_le_bytes(value.try_into().unwrap()))
-        } else {
-            Ok(0_u64)
-        }
+        let nonce_key = TrieKey::<V>::account_key(address, AccountField::Nonce);
+        self.trie
+            .get(&nonce_key)
+            .map(|value| value.map_or(0, |value| u64::from_le_bytes(value.try_into().unwrap())))
     }
 
     /// `nonce_with_proof` is return the nonce with proof of given account address
@@ -128,20 +116,12 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     ///
     /// Error if state_hash does not exist or missed some trie nodes
     pub fn nonce_with_proof(&self, address: &PublicAddress) -> Result<(Proof, u64), MptError> {
-        let nonce_key: Vec<u8> = TrieKey::<V>::account_key(address, AccountField::Nonce);
-        let (proof, value) = self.trie.get_with_proof(&nonce_key)?;
-        let proof: Proof = proof
-            .into_iter()
-            .map(|node| WSProofNode::new(proof_level::ACCOUNTS, node).into())
-            .collect();
-        if value.is_some() {
-            Ok((
-                proof,
-                u64::from_le_bytes(value.unwrap().try_into().unwrap()),
-            ))
-        } else {
-            Ok((proof, 0_u64))
-        }
+        let nonce_key = TrieKey::<V>::account_key(address, AccountField::Nonce);
+        self.get_with_proof_from_trie_key(&nonce_key)
+            .map(|(proof, value)| {
+                let value = value.map_or(0, |value| u64::from_le_bytes(value.try_into().unwrap()));
+                (proof, value)
+            })
     }
 
     /// `balance` is return the balance of given account address
@@ -150,13 +130,10 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     ///
     /// Error if state_hash does not exist or missed some trie nodes
     pub fn balance(&self, address: &PublicAddress) -> Result<u64, MptError> {
-        let balance_key: Vec<u8> = TrieKey::<V>::account_key(address, AccountField::Balance);
-        let value = self.trie.get(&balance_key)?;
-        if value.is_some() {
-            Ok(u64::from_le_bytes(value.unwrap().try_into().unwrap()))
-        } else {
-            Ok(0_u64)
-        }
+        let balance_key = TrieKey::<V>::account_key(address, AccountField::Balance);
+        self.trie
+            .get(&balance_key)
+            .map(|value| value.map_or(0, |value| u64::from_le_bytes(value.try_into().unwrap())))
     }
 
     /// `balance_with_proof` is return the balance with proof of given account address
@@ -166,19 +143,11 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     /// Error if state_hash does not exist or missed some trie nodes
     pub fn balance_with_proof(&self, address: &PublicAddress) -> Result<(Proof, u64), MptError> {
         let balance_key: Vec<u8> = TrieKey::<V>::account_key(address, AccountField::Balance);
-        let (proof, value) = self.trie.get_with_proof(&balance_key)?;
-        let proof: Proof = proof
-            .into_iter()
-            .map(|node| WSProofNode::new(proof_level::ACCOUNTS, node).into())
-            .collect();
-        if value.is_some() {
-            Ok((
-                proof,
-                u64::from_le_bytes(value.unwrap().try_into().unwrap()),
-            ))
-        } else {
-            Ok((proof, 0_u64))
-        }
+        self.get_with_proof_from_trie_key(&balance_key)
+            .map(|(proof, value)| {
+                let value = value.map_or(0, |value| u64::from_le_bytes(value.try_into().unwrap()));
+                (proof, value)
+            })
     }
 
     /// `code` is return the code of given account address
@@ -188,8 +157,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     /// Error if state_hash does not exist or missed some trie nodes
     pub fn code(&self, address: &PublicAddress) -> Result<Option<Vec<u8>>, MptError> {
         let code_key: Vec<u8> = TrieKey::<V>::account_key(address, AccountField::ContractCode);
-        let value = self.trie.get(&code_key)?;
-        Ok(value)
+        self.trie.get(&code_key)
     }
 
     /// `code_with_proof` is return the code with proof of given account address
@@ -202,12 +170,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         address: &PublicAddress,
     ) -> Result<(Proof, Option<Vec<u8>>), MptError> {
         let code_key: Vec<u8> = TrieKey::<V>::account_key(address, AccountField::ContractCode);
-        let (proof, value) = self.trie.get_with_proof(&code_key)?;
-        let proof: Proof = proof
-            .into_iter()
-            .map(|node| WSProofNode::new(proof_level::ACCOUNTS, node).into())
-            .collect();
-        Ok((proof, value))
+        self.get_with_proof_from_trie_key(&code_key)
     }
 
     /// `cbi_version` is return the cbi_version of given account address
@@ -217,12 +180,9 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     /// Error if state_hash does not exist or missed some trie nodes
     pub fn cbi_version(&self, address: &PublicAddress) -> Result<u32, MptError> {
         let cbi_version_key: Vec<u8> = TrieKey::<V>::account_key(address, AccountField::CbiVersion);
-        let value = self.trie.get(&cbi_version_key)?;
-        if value.is_some() {
-            Ok(u32::from_le_bytes(value.unwrap().try_into().unwrap()))
-        } else {
-            Ok(0_u32)
-        }
+        self.trie
+            .get(&cbi_version_key)
+            .map(|value| value.map_or(0, |value| u32::from_le_bytes(value.try_into().unwrap())))
     }
 
     /// `cbi_version_with_proof` is return the cbi_version with proof of given account address
@@ -235,19 +195,11 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         address: &PublicAddress,
     ) -> Result<(Proof, u32), MptError> {
         let cbi_version_key: Vec<u8> = TrieKey::<V>::account_key(address, AccountField::CbiVersion);
-        let (proof, value) = self.trie.get_with_proof(&cbi_version_key)?;
-        let proof = proof
-            .into_iter()
-            .map(|node| WSProofNode::new(proof_level::ACCOUNTS, node).into())
-            .collect();
-        if value.is_some() {
-            Ok((
-                proof,
-                u32::from_le_bytes(value.unwrap().try_into().unwrap()),
-            ))
-        } else {
-            Ok((proof, 0_u32))
-        }
+        self.get_with_proof_from_trie_key(&cbi_version_key)
+            .map(|(proof, value)| {
+                let value = value.map_or(0, |value| u32::from_le_bytes(value.try_into().unwrap()));
+                (proof, value)
+            })
     }
 
     /// `storage_hash` is return the storage_hash of given account address
@@ -256,10 +208,10 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     ///
     /// Error if state_hash does not exist or missed some trie nodes
     pub fn storage_hash(&self, address: &PublicAddress) -> Result<Option<Sha256Hash>, MptError> {
-        let storage_hash_key: Vec<u8> =
-            TrieKey::<V>::account_key(address, AccountField::StorageHash);
-        let value = self.trie.get(&storage_hash_key)?;
-        Ok(value.map(|hash_value| hash_value.try_into().unwrap()))
+        let storage_hash_key = TrieKey::<V>::account_key(address, AccountField::StorageHash);
+        self.trie
+            .get(&storage_hash_key)
+            .map(|value| value.map(|hash_value| hash_value.try_into().unwrap()))
     }
 
     /// `storage_hash` is return the storage_hash with proof of given account address
@@ -271,17 +223,12 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         &self,
         address: &PublicAddress,
     ) -> Result<(Proof, Option<Sha256Hash>), MptError> {
-        let storage_hash_key: Vec<u8> =
-            TrieKey::<V>::account_key(address, AccountField::StorageHash);
-        let (proof, value) = self.trie.get_with_proof(&storage_hash_key)?;
-        let proof = proof
-            .into_iter()
-            .map(|node| WSProofNode::new(proof_level::ACCOUNTS, node).into())
-            .collect();
-        Ok((
-            proof,
-            value.map(|hash_value| hash_value.try_into().unwrap()),
-        ))
+        let storage_hash_key = TrieKey::<V>::account_key(address, AccountField::StorageHash);
+        self.get_with_proof_from_trie_key(&storage_hash_key)
+            .map(|(proof, value)| {
+                let value = value.map(|hash_value| hash_value.try_into().unwrap());
+                (proof, value)
+            })
     }
 
     /// `all` is to iterator all Account information in AccountTrie
@@ -373,6 +320,23 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         self.trie.set(&cbi_version_key, value)?;
         Ok(())
     }
+
+    /// Get the value with the proof from the account trie given a key. Each node in the proof is
+    /// prepended with a prefix for proof level ACCOUNTS.
+    ///
+    /// Error if root hash does not exists or missed some trie nodes
+    fn get_with_proof_from_trie_key(
+        &self,
+        trie_key: &Vec<u8>,
+    ) -> Result<(Proof, Option<Vec<u8>>), MptError> {
+        self.trie.get_with_proof(trie_key).map(|(proof, value)| {
+            let proof = proof
+                .into_iter()
+                .map(|node| WSProofNode::new(proof_level::ACCOUNTS, node).into())
+                .collect();
+            (proof, value)
+        })
+    }
 }
 
 /// intefaces called by [WorldState](crate::world_state::WorldState)
@@ -393,11 +357,6 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         let db = KeyInstrumentedDB::new(storage, vec![]);
         let trie = Mpt::open(db, state_hash);
         AccountsTrie { trie }
-    }
-
-    /// `root_hash` called by [WorldState](crate::world_state::WorldState) to get the root hash of the current trie
-    pub(crate) fn root_hash(&self) -> Sha256Hash {
-        self.trie.root_hash()
     }
 
     /// `set_storage_hash` called by [WorldState](crate::world_state::WorldState) to set account storage_hash

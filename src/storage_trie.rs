@@ -58,8 +58,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     /// Error if storage_hash does not exists or missed some trie nodes
     pub fn get(&self, key: &Vec<u8>) -> Result<Option<Vec<u8>>, MptError> {
         let trie_key: Vec<u8> = TrieKey::<V>::storage_key(key);
-        let value = self.trie.get(&trie_key)?;
-        Ok(value)
+        self.trie.get(&trie_key)
     }
 
     /// `get_with_proof` return storage value with proof by specific storage key
@@ -69,12 +68,13 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     /// Error if storage_hash does not exists or missed some trie nodes
     pub fn get_with_proof(&self, key: &Vec<u8>) -> Result<(Proof, Option<Vec<u8>>), MptError> {
         let trie_key: Vec<u8> = TrieKey::<V>::storage_key(key);
-        let (proof, value) = self.trie.get_with_proof(&trie_key)?;
-        let proof: Proof = proof
-            .into_iter()
-            .map(|node| WSProofNode::new(proof_level::STORAGE, node).into())
-            .collect();
-        Ok((proof, value))
+        self.trie.get_with_proof(&trie_key).map(|(proof, value)| {
+            let proof = proof
+                .into_iter()
+                .map(|node| WSProofNode::new(proof_level::STORAGE, node).into())
+                .collect();
+            (proof, value)
+        })
     }
 
     /// `all` is to iterator all <Key, Value> in current StorageTrie
@@ -97,8 +97,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     /// Error if storage_hash does not exists or missed some trie nodes
     pub fn contains(&self, key: &Vec<u8>) -> Result<bool, MptError> {
         let storage_key: Vec<u8> = TrieKey::<V>::storage_key(key);
-        let exsits = self.trie.contains(&storage_key)?;
-        Ok(exsits)
+        self.trie.contains(&storage_key)
     }
 
     /// `set` is to set/update <Key, Value> pair in StorageTrie

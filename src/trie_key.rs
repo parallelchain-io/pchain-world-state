@@ -91,22 +91,24 @@ impl<V: VersionProvider> TrieKey<V> {
 
     /// `account_address` is to seperate the account address from [AccountsTrie](crate::accounts_trie::AccountsTrie) Key
     pub(crate) fn account_address(key: &[u8]) -> Result<PublicAddress, TrieKeyBuildError> {
-        if key.len() < size_of::<PublicAddress>() {    
+        if key.len() < size_of::<PublicAddress>() {
             return Err(TrieKeyBuildError::InvalidPublicAddress);
         }
-        
+
         key[..size_of::<PublicAddress>()]
             .try_into()
             .map_err(|_| TrieKeyBuildError::InvalidPublicAddress)
     }
 
-    /// `drop_visibility_type` is to drop the visibility byte from [AccountsTrie](crate::accounts_trie::AccountsTrie) Key
+    /// `drop_visibility_type` is to drop the visibility byte from [AccountsTrie](crate::accounts_trie::AccountsTrie) Key or [StorageTrie](crate::storage_trie::StorageTrie) Key
     pub(crate) fn drop_visibility_type(key: &[u8]) -> Result<Vec<u8>, TrieKeyBuildError> {
         if key.len() < size_of::<u8>() {
             return Err(TrieKeyBuildError::Other);
         }
-
-        Ok(key[size_of::<u8>()..].to_vec())
+        match <V>::version() {
+            Version::V1 => Ok(key[size_of::<u8>()..].to_vec()),
+            Version::V2 => Ok(key.to_vec()),
+        }
     }
 }
 

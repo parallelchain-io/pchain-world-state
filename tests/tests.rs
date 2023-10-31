@@ -471,9 +471,11 @@ pub fn iter() {
     let storage_iter = new_ws_v1
         .storage_trie(env_1.addresses.get(0).unwrap())
         .unwrap()
-        .all();
+        .all()
+        .unwrap();
+    assert!(storage_iter.clone().contains_key(&key_apple));
+    assert!(storage_iter.clone().contains_key(&key_banana));
     storage_iter
-        .unwrap()
         .into_iter()
         .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
 
@@ -547,9 +549,11 @@ pub fn iter() {
     let storage_iter = new_ws_v2
         .storage_trie(env_2.addresses.get(0).unwrap())
         .unwrap()
-        .all();
+        .all()
+        .unwrap();
+    assert!(storage_iter.clone().contains_key(&key_apple));
+    assert!(storage_iter.clone().contains_key(&key_banana));
     storage_iter
-        .unwrap()
         .into_iter()
         .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
 }
@@ -1042,19 +1046,20 @@ pub fn destroy_and_rebuild_in_same_version() {
         .for_each(|(key, value)| println!("account_address: {:?}, account_info: {:?}", key, value));
     println!("=======================iter storage trie after rebbuild==========================");
     let storage_trie_ref_1 = new_ws_2.storage_trie(&env_2.addresses.get(0).unwrap());
-    storage_trie_ref_1
-        .unwrap()
-        .all()
-        .unwrap()
+    let storage_iter_1 = storage_trie_ref_1.unwrap().all().unwrap();
+    assert!(storage_iter_1.clone().contains_key(&key_apple));
+    assert!(storage_iter_1.clone().contains_key(&key_banana));
+    storage_iter_1
         .into_iter()
         .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
     let storage_trie_ref_2 = new_ws_2.storage_trie(&env_2.addresses.get(1).unwrap());
-    storage_trie_ref_2
-        .unwrap()
-        .all()
-        .unwrap()
+    let storage_iter_2 = storage_trie_ref_2.unwrap().all().unwrap();
+    assert!(storage_iter_2.clone().contains_key(&key_apple));
+    assert!(storage_iter_2.clone().contains_key(&key_banana));
+    storage_iter_2
         .into_iter()
         .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
+
     // check if key, value in db2 match in db1 record
     assert_eq!(db_1_record.size(), env_2.db.size());
     for (key, value) in db_1_record.0.into_iter() {
@@ -1160,10 +1165,10 @@ pub fn destroy_v1_rebuild_v2() {
         .for_each(|(key, value)| println!("account_address: {:?}, account_info: {:?}", key, value));
     let storage_trie_ref = new_ws_2.storage_trie(&env_2.addresses.get(0).unwrap());
     println!("=======================iter storage after rebuild==========================");
-    storage_trie_ref
-        .unwrap()
-        .all()
-        .unwrap()
+    let storage_tire_iter = storage_trie_ref.unwrap().all().unwrap();
+    assert!(storage_tire_iter.contains_key(&key_apple));
+    assert!(storage_tire_iter.contains_key(&key_banana));
+    storage_tire_iter
         .into_iter()
         .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
 }

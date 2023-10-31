@@ -19,8 +19,7 @@ use pchain_types::cryptography::{PublicAddress, Sha256Hash};
 
 use crate::proof_node::{proof_level, WSProofNode};
 use crate::trie_key::TrieKey;
-use reference_trie::{ExtensionLayout, NoExtensionLayout, RefHasher};
-use trie_db::{Trie, TrieDBBuilder};
+use reference_trie::RefHasher;
 
 const NULL_NODE_KEY: &[u8] = &[0_u8];
 /// Struct store account storage information for contract account
@@ -172,7 +171,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     }
 
     /// `destory` called by [WorldState](crate::world_state::WorldState) return all data in current StorageTrie as HashMap, and destory the empty StorageTrie
-    pub(crate) fn destroy(&mut self) -> Result<DestroyStorageChanges, MptError> {
+    pub(crate) fn destroy(&mut self) -> Result<DestroyStorageChanges, WorldStateError> {
         let mut data_map: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
         // check current root hash is equal to empty trie root hash
         if self.trie.root_hash() == RefHasher::hash(NULL_NODE_KEY) {
@@ -184,53 +183,23 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
                 data_map: HashMap::new(),
             });
         }
-        match <V>::version() {
-            Version::V1 => {
-                let current_root_hash = self.trie.root_hash();
-                let storage_trie =
-                    TrieDBBuilder::<NoExtensionLayout>::new(&self.trie, &current_root_hash).build();
-                let storage_iter = storage_trie.iter().map_err(|err| MptError::from(*err))?;
-                let mut key_set: HashSet<Vec<u8>> = HashSet::new();
-                for item in storage_iter {
-                    let (key, value) = item.map_err(|err| MptError::from(*err))?;
-                    let storage_key: Vec<u8> = TrieKey::<V>::drop_visibility_type(&key).unwrap(); // TODO avoid unwrap
-                    data_map.insert(storage_key, value);
-                    key_set.insert(key);
-                }
-                // batch delete
-                self.trie.batch_remove(&key_set)?;
-                // after delete all <key, value> pair, destroy the empty trie
-                self.trie.deinit()?;
-                let mpt_changes = self.trie.close();
-                Ok(DestroyStorageChanges {
-                    inserts: mpt_changes.0,
-                    deletes: mpt_changes.1,
-                    data_map,
-                })
-            }
-            Version::V2 => {
-                let current_root_hash = self.trie.root_hash();
-                let storage_trie =
-                    TrieDBBuilder::<ExtensionLayout>::new(&self.trie, &current_root_hash).build();
-                let storage_iter = storage_trie.iter().map_err(|err| MptError::from(*err))?;
-                let mut key_set: HashSet<Vec<u8>> = HashSet::new();
-                for item in storage_iter {
-                    let (key, value) = item.map_err(|err| MptError::from(*err))?;
-                    let storage_key: Vec<u8> = TrieKey::<V>::drop_visibility_type(&key).unwrap(); // TODO avoid unwrap
-                    data_map.insert(storage_key, value);
-                    key_set.insert(key);
-                }
-                // batch delete
-                self.trie.batch_remove(&key_set)?;
-                // after delete all <key, value> pair, destroy the empty trie
-                self.trie.deinit()?;
-                let mpt_changes = self.trie.close();
-                Ok(DestroyStorageChanges {
-                    inserts: mpt_changes.0,
-                    deletes: mpt_changes.1,
-                    data_map,
-                })
-            }
-        }
+        let mut key_set: HashSet<Vec<u8>> = HashSet::new();
+        self.trie.iterate_all(|key, value| {
+            key_set.insert(key.clone());
+            let storage_key = TrieKey::<V>::drop_visibility_type(&key)
+                .map_err(WorldStateError::TrieKeyBuildError)?;
+            data_map.insert(storage_key, value);
+            Ok::<(), WorldStateError>(())
+        })?;
+        // batch delete
+        self.trie.batch_remove(&key_set)?;
+        // after delete all <key, value> pair, destroy the empty trie
+        self.trie.deinit()?;
+        let mpt_changes = self.trie.close();
+        Ok(DestroyStorageChanges {
+            inserts: mpt_changes.0,
+            deletes: mpt_changes.1,
+            data_map,
+        })
     }
 }

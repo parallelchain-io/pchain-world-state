@@ -186,8 +186,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
             // get and destory the StorageTrie
             if let Some(storage_hash) = account.storage_hash() {
                 let mut storage_trie = StorageTrie::<S, V>::open(self.db, storage_hash, address);
-                let storage_destory_return =
-                    storage_trie.destroy().map_err(WorldStateError::MptError)?;
+                let storage_destory_return = storage_trie.destroy()?;
                 // merge the info from StorageTrie destroy return to the account trie destroy return
                 accounts_destroy_return
                     .inserts

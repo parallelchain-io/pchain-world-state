@@ -11,8 +11,6 @@
 use std::collections::{HashMap, HashSet};
 
 use pchain_types::cryptography::{PublicAddress, Sha256Hash};
-use reference_trie::{ExtensionLayout, NoExtensionLayout};
-use trie_db::{Trie, TrieDBBuilder};
 
 use crate::{
     db::{KeyInstrumentedDB, DB},
@@ -21,7 +19,7 @@ use crate::{
     proof_node::{proof_level, WSProofNode},
     trie_key::TrieKey,
     world_state::{DestroyWorldStateChanges, WorldStateChanges},
-    Version, VersionProvider,
+    VersionProvider,
 };
 
 /// Struct store external account information in blockchain
@@ -240,7 +238,6 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         let mut ret_map: HashMap<PublicAddress, Account> = HashMap::new();
 
         self.trie.iterate_all(|key, value| {
-
             // Get the account address and the field from the key
             let account_address =
                 TrieKey::<V>::account_address(&key).map_err(WorldStateError::TrieKeyBuildError)?;
@@ -421,142 +418,56 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     /// Return the [DestoryWorldStateReturn] for physical db to do the physical deletion and future WorldState rebuild
     pub(crate) fn destroy(&mut self) -> Result<DestroyWorldStateChanges, WorldStateError> {
         let mut data_map: HashMap<PublicAddress, Account> = HashMap::new();
-        match <V>::version() {
-            Version::V1 => {
-                let current_root_hash = self.trie.root_hash();
-                let account_trie =
-                    TrieDBBuilder::<NoExtensionLayout>::new(&self.trie, &current_root_hash).build();
-                let account_iter = account_trie
-                    .iter()
-                    .map_err(|err| WorldStateError::MptError(MptError::from(*err)))?;
-                // key_set to store keys that need to be delete
-                let mut key_set: HashSet<Vec<u8>> = HashSet::new();
-                for item in account_iter {
-                    let (key, value) =
-                        item.map_err(|err| WorldStateError::MptError(MptError::from(*err)))?;
-                    let account_address = TrieKey::<V>::account_address(&key)
-                        .map_err(WorldStateError::TrieKeyBuildError)?;
-                    let mut account: Account = match data_map.get(&account_address) {
-                        Some(account) => account.clone(),
-                        None => Account::default(),
-                    };
-                    let account_filed: AccountField = TrieKey::<V>::account_field(&key)
-                        .map_err(WorldStateError::TrieKeyBuildError)?;
-                    key_set.insert(key);
-                    match account_filed {
-                        AccountField::Nonce => {
-                            account.nonce = u64::from_le_bytes(value.try_into().map_err(|_| {
-                                WorldStateError::DecodeOrEncodeError(
-                                    DecodeOrEncodeError::DecodeError,
-                                )
-                            })?);
-                        }
-                        AccountField::Balance => {
-                            account.balance =
-                                u64::from_le_bytes(value.try_into().map_err(|_| {
-                                    WorldStateError::DecodeOrEncodeError(
-                                        DecodeOrEncodeError::DecodeError,
-                                    )
-                                })?);
-                        }
-                        AccountField::ContractCode => {
-                            account.code = value;
-                        }
-                        AccountField::CbiVersion => {
-                            account.cbi_version =
-                                u32::from_le_bytes(value.try_into().map_err(|_| {
-                                    WorldStateError::DecodeOrEncodeError(
-                                        DecodeOrEncodeError::DecodeError,
-                                    )
-                                })?);
-                        }
-                        AccountField::StorageHash => {
-                            account.set_storage_hash(value);
-                        }
-                    }
-
-                    data_map.insert(account_address, account);
+        let mut key_set: HashSet<Vec<u8>> = HashSet::new();
+        self.trie.iterate_all(|key, value| {
+            key_set.insert(key.clone());
+            let account_address =
+                TrieKey::<V>::account_address(&key).map_err(WorldStateError::TrieKeyBuildError)?;
+            let account_field: AccountField =
+                TrieKey::<V>::account_field(&key).map_err(WorldStateError::TrieKeyBuildError)?;
+            let account = match data_map.get_mut(&account_address) {
+                Some(account) => account,
+                None => {
+                    data_map.insert(account_address, Account::default());
+                    data_map.get_mut(&account_address).unwrap()
                 }
-                // destroy all account field info
-                self.trie
-                    .batch_remove(&key_set)
-                    .map_err(WorldStateError::MptError)?;
-                // destroy the account trie
-                self.trie.deinit().map_err(WorldStateError::MptError)?;
-                let mpt_changes = self.trie.close();
-                Ok(DestroyWorldStateChanges {
-                    inserts: mpt_changes.0,
-                    deletes: mpt_changes.1,
-                    accounts: data_map,
-                })
-            }
-            Version::V2 => {
-                let current_root_hash = self.trie.root_hash();
-                let account_trie =
-                    TrieDBBuilder::<ExtensionLayout>::new(&self.trie, &current_root_hash).build();
-                let account_iter = account_trie
-                    .iter()
-                    .map_err(|err| WorldStateError::MptError(MptError::from(*err)))?;
-                // key_set to store keys that need to be delete
-                let mut key_set: HashSet<Vec<u8>> = HashSet::new();
-                for item in account_iter {
-                    let (key, value) =
-                        item.map_err(|err| WorldStateError::MptError(MptError::from(*err)))?;
-                    let account_address = TrieKey::<V>::account_address(&key)
-                        .map_err(WorldStateError::TrieKeyBuildError)?;
-                    let mut account: Account = match data_map.get(&account_address) {
-                        Some(account) => account.clone(),
-                        None => Account::default(),
-                    };
-                    let account_filed: AccountField = TrieKey::<V>::account_field(&key)
-                        .map_err(WorldStateError::TrieKeyBuildError)?;
-                    key_set.insert(key);
-                    match account_filed {
-                        AccountField::Nonce => {
-                            account.nonce = u64::from_le_bytes(value.try_into().map_err(|_| {
-                                WorldStateError::DecodeOrEncodeError(
-                                    DecodeOrEncodeError::DecodeError,
-                                )
-                            })?);
-                        }
-                        AccountField::Balance => {
-                            account.balance =
-                                u64::from_le_bytes(value.try_into().map_err(|_| {
-                                    WorldStateError::DecodeOrEncodeError(
-                                        DecodeOrEncodeError::DecodeError,
-                                    )
-                                })?);
-                        }
-                        AccountField::ContractCode => {
-                            account.code = value;
-                        }
-                        AccountField::CbiVersion => {
-                            account.cbi_version =
-                                u32::from_le_bytes(value.try_into().map_err(|_| {
-                                    WorldStateError::DecodeOrEncodeError(
-                                        DecodeOrEncodeError::DecodeError,
-                                    )
-                                })?);
-                        }
-                        AccountField::StorageHash => {
-                            account.set_storage_hash(value);
-                        }
-                    }
-                    data_map.insert(account_address, account);
+            };
+            match account_field {
+                AccountField::Nonce => {
+                    account.nonce = u64::from_le_bytes(value.try_into().map_err(|_| {
+                        WorldStateError::DecodeOrEncodeError(DecodeOrEncodeError::DecodeError)
+                    })?);
                 }
-                // destroy all account field info
-                self.trie
-                    .batch_remove(&key_set)
-                    .map_err(WorldStateError::MptError)?;
-                // destroy the account trie
-                self.trie.deinit().map_err(WorldStateError::MptError)?;
-                let mpt_changes = self.trie.close();
-                Ok(DestroyWorldStateChanges {
-                    inserts: mpt_changes.0,
-                    deletes: mpt_changes.1,
-                    accounts: data_map,
-                })
+                AccountField::Balance => {
+                    account.balance = u64::from_le_bytes(value.try_into().map_err(|_| {
+                        WorldStateError::DecodeOrEncodeError(DecodeOrEncodeError::DecodeError)
+                    })?);
+                }
+                AccountField::ContractCode => {
+                    account.code = value;
+                }
+                AccountField::CbiVersion => {
+                    account.cbi_version = u32::from_le_bytes(value.try_into().map_err(|_| {
+                        WorldStateError::DecodeOrEncodeError(DecodeOrEncodeError::DecodeError)
+                    })?);
+                }
+                AccountField::StorageHash => {
+                    account.set_storage_hash(value);
+                }
             }
-        }
+            Ok::<(), WorldStateError>(())
+        })?;
+        // destroy all account field info
+        self.trie
+            .batch_remove(&key_set)
+            .map_err(WorldStateError::MptError)?;
+        // destroy the account trie
+        self.trie.deinit().map_err(WorldStateError::MptError)?;
+        let mpt_changes = self.trie.close();
+        Ok(DestroyWorldStateChanges {
+            inserts: mpt_changes.0,
+            deletes: mpt_changes.1,
+            accounts: data_map,
+        })
     }
 }

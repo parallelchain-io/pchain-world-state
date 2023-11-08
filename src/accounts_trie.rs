@@ -239,11 +239,9 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
 
         self.trie.iterate_all(|key, value| {
             // Get the account address and the field from the key
-            let account_address =
-                TrieKey::<V>::account_address(&key).map_err(WorldStateError::TrieKeyBuildError)?;
+            let account_address = TrieKey::<V>::account_address(&key)?;
 
-            let account_field =
-                TrieKey::<V>::account_field(&key).map_err(WorldStateError::TrieKeyBuildError)?;
+            let account_field = TrieKey::<V>::account_field(&key)?;
 
             // Get mutable reference to the account from the account map.
             let account_value = match ret_map.get_mut(&account_address) {
@@ -421,10 +419,8 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         let mut key_set: HashSet<Vec<u8>> = HashSet::new();
         self.trie.iterate_all(|key, value| {
             key_set.insert(key.clone());
-            let account_address =
-                TrieKey::<V>::account_address(&key).map_err(WorldStateError::TrieKeyBuildError)?;
-            let account_field: AccountField =
-                TrieKey::<V>::account_field(&key).map_err(WorldStateError::TrieKeyBuildError)?;
+            let account_address = TrieKey::<V>::account_address(&key)?;
+            let account_field: AccountField = TrieKey::<V>::account_field(&key)?;
             let account = match data_map.get_mut(&account_address) {
                 Some(account) => account,
                 None => {
@@ -458,11 +454,9 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
             Ok::<(), WorldStateError>(())
         })?;
         // destroy all account field info
-        self.trie
-            .batch_remove(&key_set)
-            .map_err(WorldStateError::MptError)?;
+        self.trie.batch_remove(&key_set)?;
         // destroy the account trie
-        self.trie.deinit().map_err(WorldStateError::MptError)?;
+        self.trie.deinit()?;
         let mpt_changes = self.trie.close();
         Ok(DestroyWorldStateChanges {
             inserts: mpt_changes.0,

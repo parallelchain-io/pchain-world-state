@@ -207,25 +207,13 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     ) -> Result<WorldStateChanges, WorldStateError> {
         for (address, account) in accounts.into_iter() {
             let account_trie_mut = self.account_trie_mut();
-            account_trie_mut
-                .set_nonce(&address, account.nonce)
-                .map_err(WorldStateError::MptError)?;
-            account_trie_mut
-                .set_balance(&address, account.balance)
-                .map_err(WorldStateError::MptError)?;
-            account_trie_mut
-                .set_cbi_version(&address, account.cbi_version)
-                .map_err(WorldStateError::MptError)?;
-            account_trie_mut
-                .set_code(&address, account.code.clone())
-                .map_err(WorldStateError::MptError)?;
+            account_trie_mut.set_nonce(&address, account.nonce)?;
+            account_trie_mut.set_balance(&address, account.balance)?;
+            account_trie_mut.set_cbi_version(&address, account.cbi_version)?;
+            account_trie_mut.set_code(&address, account.code.clone())?;
             if !account.storages().is_empty() {
-                let storage_trie_mut = self
-                    .storage_trie_mut(&address)
-                    .map_err(WorldStateError::MptError)?;
-                storage_trie_mut
-                    .batch_set(&account.storages())
-                    .map_err(WorldStateError::MptError)?;
+                let storage_trie_mut = self.storage_trie_mut(&address)?;
+                storage_trie_mut.batch_set(&account.storages())?;
             }
         }
         // storage_hash of each accounts will be set inside close
@@ -241,8 +229,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
             let storage_change = storage_trie.close();
             // update storage_hash for matched AccountTrie by closed storage_change's stroage_hash
             self.accounts_trie
-                .set_storage_hash(&address, storage_change.new_root_hash)
-                .map_err(WorldStateError::MptError)?;
+                .set_storage_hash(&address, storage_change.new_root_hash)?;
             // merge the inserts and deletes from StroageTrie
             inserts.extend(storage_change.inserts);
             deletes.extend(storage_change.deletes);

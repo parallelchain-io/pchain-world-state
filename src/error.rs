@@ -21,6 +21,18 @@ impl From<MptError> for WorldStateError {
     }
 }
 
+impl From<TrieKeyBuildError> for WorldStateError {
+    fn from(error: TrieKeyBuildError) -> Self {
+        Self::TrieKeyBuildError(error)
+    }
+}
+
+impl From<DecodeOrEncodeError> for WorldStateError {
+    fn from(error: DecodeOrEncodeError) -> Self {
+        Self::DecodeOrEncodeError(error)
+    }
+}
+
 /// `MptError` is error from lib trie_db
 #[derive(Debug, PartialEq, Eq)]
 pub enum MptError {

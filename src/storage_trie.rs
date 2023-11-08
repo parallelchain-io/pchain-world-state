@@ -85,8 +85,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         let mut ret_map: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
 
         self.trie.iterate_all(|key, value| {
-            let storage_key = TrieKey::<V>::drop_visibility_type(&key)
-                .map_err(WorldStateError::TrieKeyBuildError)?;
+            let storage_key = TrieKey::<V>::drop_visibility_type(&key)?;
             ret_map.insert(storage_key, value);
 
             Ok::<(), WorldStateError>(())
@@ -186,8 +185,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         let mut key_set: HashSet<Vec<u8>> = HashSet::new();
         self.trie.iterate_all(|key, value| {
             key_set.insert(key.clone());
-            let storage_key = TrieKey::<V>::drop_visibility_type(&key)
-                .map_err(WorldStateError::TrieKeyBuildError)?;
+            let storage_key = TrieKey::<V>::drop_visibility_type(&key)?;
             data_map.insert(storage_key, value);
             Ok::<(), WorldStateError>(())
         })?;

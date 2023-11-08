@@ -201,10 +201,10 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
     /// `iterate_all` in DFS approach to iterate all key-value pairs in MPT by a function. The iteration may
     /// end earlier if it fails to obtain key-value from the trie (e.g. state_hash does
     /// not exist or missed some trie nodes), or the function returns error.
-    pub(crate) fn iterate_all<F, E>(&self, mut f: F) -> Result<(), E> 
-    where 
+    pub(crate) fn iterate_all<F, E>(&self, mut f: F) -> Result<(), E>
+    where
         F: FnMut(Vec<u8>, Vec<u8>) -> Result<(), E>,
-        E: From<MptError>
+        E: From<MptError>,
     {
         match <V>::version() {
             Version::V1 => {
@@ -406,10 +406,8 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
 
     /// Check for the existence of a hash-key.
     fn contains(&self, key: &Hash256, mpt_prefix: Prefix) -> bool {
-        let key: [u8; 32] = PrefixedTrieNodeKey::<RefHasher>::key(key, mpt_prefix)
-            .try_into()
-            .unwrap();
-        HashDB::get(self, &key, mpt_prefix).is_some()
+        let key = PrefixedTrieNodeKey::<RefHasher>::key(key, mpt_prefix);
+        self.storage.get(key.as_ref()).is_some()
     }
 
     /// Insert item into the DB and return the hash for a later lookup.
@@ -474,7 +472,7 @@ mod test {
     use super::*;
     use crate::accounts_trie::AccountField;
     use crate::trie_key::TrieKey;
-    use crate::version::V1;
+    use crate::version::{V1, V2};
     use pchain_types::cryptography::PublicAddress;
 
     #[derive(Debug, Clone)]
@@ -557,19 +555,23 @@ mod test {
     pub fn init_add_delete_and_open() {
         // init the trie
         let mut env = TestEnv::default();
-        let db = KeyInstrumentedDB::<DummyStorage, V1>::new(&env.db, env.address.to_vec());
-        let mut ret = Mpt::<DummyStorage, V1>::new(db.clone());
+        let db = KeyInstrumentedDB::<DummyStorage, V2>::new(&env.db, env.address.to_vec());
+        let mut ret = Mpt::<DummyStorage, V2>::new(db.clone());
         let changes = ret.close();
         env.db.apply_changes(changes.0, changes.1);
-
+        println!("{:?}", env.address.to_vec());
         // insert 2 pair of key, values into the trie
-        let db = KeyInstrumentedDB::<DummyStorage, V1>::new(&env.db, env.address.to_vec());
+        let db = KeyInstrumentedDB::<DummyStorage, V2>::new(&env.db, env.address.to_vec());
         println!("root_hash after init, {:?}", changes.2);
-        let mut ret = Mpt::<DummyStorage, V1>::open(db, changes.2);
+        let mut ret = Mpt::<DummyStorage, V2>::open(db, changes.2);
         let data_key = b"apple".to_vec();
         let data_value = b"apple_12345".to_vec();
         let data_key_b = b"banana".to_vec();
         let data_value_b = b"banana_12345".to_vec();
+        println!("{:?}", data_key);
+        println!("{:?}", data_value);
+        println!("{:?}", data_key_b);
+        println!("{:?}", data_value_b);
         assert_eq!(ret.get(&data_key).unwrap(), None);
 
         ret.set(&data_key, data_value.clone()).unwrap();
@@ -584,9 +586,11 @@ mod test {
         env.db.apply_changes(changes.0, changes.1);
 
         // open the trie after insertion and test if can find the first <key, value> pair in the existing trie
-        let db = KeyInstrumentedDB::<DummyStorage, V1>::new(&env.db, env.address.to_vec());
+        let db = KeyInstrumentedDB::<DummyStorage, V2>::new(&env.db, env.address.to_vec());
         println!("root_hash after insert, {:?}", changes.2);
-        let mut ret = Mpt::<DummyStorage, V1>::open(db, changes.2);
+        let mut ret = Mpt::<DummyStorage, V2>::open(db, changes.2);
+        assert!(ret.contains(&data_key).unwrap());
+        assert!(ret.contains(&data_key_b).unwrap());
         assert_eq!(ret.get(&data_key).unwrap().unwrap(), data_value);
 
         // remove the 2 pair of <key value>
@@ -602,9 +606,9 @@ mod test {
         env.db.apply_changes(changes.0, changes.1);
 
         // open the trie after deletion, and print out the root_hash, and try to test if can find the second <key, value> pair in the trie (which should return None)
-        let db = KeyInstrumentedDB::<DummyStorage, V1>::new(&env.db, env.address.to_vec());
+        let db = KeyInstrumentedDB::<DummyStorage, V2>::new(&env.db, env.address.to_vec());
         println!("root_hash after delete, {:?}", changes.2);
-        let ret = Mpt::<DummyStorage, V1>::open(db, changes.2);
+        let ret = Mpt::<DummyStorage, V2>::open(db, changes.2);
         // assert_eq!(ret.get(&data_key_b).unwrap().unwrap(), data_value_b);
         assert_eq!(ret.get(&data_key_b).unwrap(), None);
     }

@@ -130,7 +130,7 @@ where
     }
 
     /// Return values by iterating over the index. Prefix with `unordered` to avoid confusion about the ordering of the values.
-    pub fn unordered_values(&self) -> Vec<V> {
+    pub fn unordered_values(&mut self) -> Vec<V> {
         let mut values = Vec::new();
         let length = self.length();
         for i in 0..length {
@@ -326,13 +326,13 @@ fn test_binary_heap() {
         inner: HashMap<Vec<u8>, Vec<u8>>,
     }
     impl NetworkAccountStorage for KVStore {
-        fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
+        fn get(&mut self, key: &[u8]) -> Option<Vec<u8>> {
             match self.inner.get(&key.to_vec()) {
                 Some(v) => Some(v.to_owned()),
                 None => None,
             }
         }
-        fn contains(&self, key: &[u8]) -> bool {
+        fn contains(&mut self, key: &[u8]) -> bool {
             self.inner.contains_key(key)
         }
         fn set(&mut self, key: &[u8], value: Vec<u8>) {

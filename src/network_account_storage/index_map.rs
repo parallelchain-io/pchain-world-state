@@ -47,7 +47,7 @@ where
     }
 
     /// length of the IndexMap. Length of an empty or uninitialized IndexMap = 0.
-    pub fn length(&self) -> u32 {
+    pub fn length(&mut self) -> u32 {
         let key_len = [self.domain.as_slice(), &Self::PREFIX_LEN].concat();
         self.store.get(&key_len).map_or(0, |length_bytes| {
             u32::from_le_bytes(length_bytes.try_into().unwrap())
@@ -55,7 +55,7 @@ where
     }
 
     /// get value by key from IndexMap
-    pub fn get_by(&self, key: &[u8]) -> Option<V> {
+    pub fn get_by(&mut self, key: &[u8]) -> Option<V> {
         let index = self.index_of_key(key)?;
         self.get(index)
     }
@@ -98,7 +98,7 @@ where
         length
     }
 
-    pub(in crate::network_account_storage) fn index_of_key(&self, key: &[u8]) -> Option<u32> {
+    pub(in crate::network_account_storage) fn index_of_key(&mut self, key: &[u8]) -> Option<u32> {
         let key_ki = [self.domain.as_slice(), &Self::PREFIX_KEY_INDEX, key].concat();
         self.store
             .get(&key_ki)
@@ -108,7 +108,7 @@ where
     /// get value by index from IndexMap. Return None if
     /// 1. inputted index exceeds capacity
     /// 2. item is not found (unreachable)
-    pub fn get(&self, index: u32) -> Option<V> {
+    pub fn get(&mut self, index: u32) -> Option<V> {
         if index >= self.capacity {
             return None;
         }
@@ -203,13 +203,13 @@ fn test_index_map() {
         inner: HashMap<Vec<u8>, Vec<u8>>,
     }
     impl NetworkAccountStorage for KVStore {
-        fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
+        fn get(&mut self, key: &[u8]) -> Option<Vec<u8>> {
             match self.inner.get(&key.to_vec()) {
                 Some(v) => Some(v.to_owned()),
                 None => None,
             }
         }
-        fn contains(&self, key: &[u8]) -> bool {
+        fn contains(&mut self, key: &[u8]) -> bool {
             self.inner.contains_key(key)
         }
         fn set(&mut self, key: &[u8], value: Vec<u8>) {

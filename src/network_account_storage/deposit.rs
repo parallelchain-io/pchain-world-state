@@ -38,12 +38,12 @@ impl<'a, S> DepositDict<'a, S>
 where
     S: NetworkAccountStorage,
 {
-    pub fn exists(&self) -> bool {
+    pub fn exists(&mut self) -> bool {
         let key = [self.prefix_key.as_slice(), &deposit_data::BALANCE].concat();
         self.world_state.contains(&key)
     }
 
-    pub fn balance(&self) -> Option<u64> {
+    pub fn balance(&mut self) -> Option<u64> {
         let bytes = self
             .world_state
             .get(&[self.prefix_key.as_slice(), &deposit_data::BALANCE].concat())?;
@@ -60,7 +60,7 @@ where
         );
     }
 
-    pub fn auto_stake_rewards(&self) -> Option<bool> {
+    pub fn auto_stake_rewards(&mut self) -> Option<bool> {
         self.world_state
             .get(
                 &[

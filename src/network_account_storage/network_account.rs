@@ -23,8 +23,8 @@ pub type NetworkAccount<'a, S> =
 
 /// A trait for key-value data source implementation of Network Account Storage.
 pub trait NetworkAccountStorage {
-    fn get(&self, key: &[u8]) -> Option<Vec<u8>>;
-    fn contains(&self, key: &[u8]) -> bool;
+    fn get(&mut self, key: &[u8]) -> Option<Vec<u8>>;
+    fn contains(&mut self, key: &[u8]) -> bool;
     fn set(&mut self, key: &[u8], value: Vec<u8>);
     fn delete(&mut self, key: &[u8]);
 }
@@ -93,7 +93,7 @@ where
         }
     }
 
-    pub fn current_epoch(&self) -> u64 {
+    pub fn current_epoch(&mut self) -> u64 {
         let value = self.world_state.get(&network_account_data::CURRENT_EPOCH);
         match value {
             Some(bytes) => u64::from_le_bytes(bytes.try_into().unwrap()),

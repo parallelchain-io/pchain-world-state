@@ -1336,21 +1336,19 @@ where
     S: DB + Send + Sync + Clone,
     V: VersionProvider + Send + Sync + Clone,
 {
-    fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
+    fn get(&mut self, key: &[u8]) -> Option<Vec<u8>> {
         let key = key.to_vec();
         self.inner
-            .clone()
             .storage_trie(&constants::NETWORK_ADDRESS)
             .unwrap()
             .get(&key)
             .unwrap()
     }
 
-    fn contains(&self, key: &[u8]) -> bool {
+    fn contains(&mut self, key: &[u8]) -> bool {
         let key = key.to_vec();
 
         self.inner
-            .clone()
             .storage_trie(&constants::NETWORK_ADDRESS)
             .unwrap()
             .contains(&key)
@@ -1418,7 +1416,7 @@ fn test_network_account() {
     assert_eq!(stakes.length(), 1);
 
     let mut pools = NetworkAccount::pools(&mut ws, [1u8; 32]);
-    let stakes = pools.delegated_stakes();
+    let mut stakes = pools.delegated_stakes();
     assert_eq!(stakes.length(), 1);
     let stake = stakes.get_by(&[2u8; 32]).unwrap();
     assert_eq!(stake.owner, [2u8; 32]);

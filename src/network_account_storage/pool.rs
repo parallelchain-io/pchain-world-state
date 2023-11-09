@@ -51,12 +51,12 @@ impl<'a, S, const M: u16> PoolDict<'a, S, M>
 where
     S: NetworkAccountStorage,
 {
-    pub fn exists(&self) -> bool {
+    pub fn exists(&mut self) -> bool {
         let key = [self.prefix_key.as_slice(), &pool_data::OPERATOR].concat();
         self.world_state.contains(&key)
     }
 
-    pub fn operator(&self) -> Option<PublicAddress> {
+    pub fn operator(&mut self) -> Option<PublicAddress> {
         let bytes = self
             .world_state
             .get(&[self.prefix_key.as_slice(), &pool_data::OPERATOR].concat())?;
@@ -73,7 +73,7 @@ where
         );
     }
 
-    pub fn power(&self) -> Option<u64> {
+    pub fn power(&mut self) -> Option<u64> {
         let bytes = self
             .world_state
             .get(&[self.prefix_key.as_slice(), &pool_data::POWER].concat())?;
@@ -90,7 +90,7 @@ where
         );
     }
 
-    pub fn commission_rate(&self) -> Option<u8> {
+    pub fn commission_rate(&mut self) -> Option<u8> {
         let bytes = self
             .world_state
             .get(&[self.prefix_key.as_slice(), &pool_data::COMMISSION_RATE].concat())?;
@@ -107,7 +107,7 @@ where
         );
     }
 
-    pub fn operator_stake(&self) -> Option<Option<Stake>> {
+    pub fn operator_stake(&mut self) -> Option<Option<Stake>> {
         self.world_state
             .get(&[self.prefix_key.as_slice(), &pool_data::OPERATOR_STAKE].concat())
             .map(|bytes| Option::<Stake>::deserialize(&bytes).unwrap())
@@ -147,7 +147,7 @@ where
     S: NetworkAccountStorage,
 {
     type Error = ();
-    fn try_from(pool: PoolDict<'a, S, M>) -> Result<Self, Self::Error> {
+    fn try_from(mut pool: PoolDict<'a, S, M>) -> Result<Self, Self::Error> {
         Ok(Pool {
             operator: pool.operator().ok_or(())?,
             commission_rate: pool.commission_rate().ok_or(())?,
@@ -185,7 +185,7 @@ where
         }
     }
 
-    pub fn length(&self) -> u32 {
+    pub fn length(&mut self) -> u32 {
         self.inner.length()
     }
 
@@ -240,7 +240,7 @@ where
         self.inner.set_length(0);
     }
 
-    pub fn get(&self, index: u32) -> Option<PoolAddress> {
+    pub fn get(&mut self, index: u32) -> Option<PoolAddress> {
         self.inner.get(index)
     }
 }

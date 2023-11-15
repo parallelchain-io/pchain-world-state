@@ -17,10 +17,8 @@
 //! 6.  [update_storage] test StorageTrie operation
 //! 7.  [iter] test AccountTrie and StorageTrie iteration
 //! 8.  [search_with_proof] test AccountTrie and StorageTrie search with proof
-//! 9.  [destroy] test destroy WorldState and the returned inserts and deletes should help to clean all data relate to WorldState in the physical db
-//! 10. [destroy_and_rebuild_in_same_version] test destroy and rebuild the WorldState in same version. The data relate to WorldState in physical db should be same before destory and after rebuild
-//! 11. [destroy_v1_rebuild_v2]  test destroy WorldState in version 1 and rebuild the WorldState in Version 2
-//! 12. [remove_storage_info] test remove <key, value > pair from StorageTrie by key
+//! 9.  [upgrade] test upgrade from WorldState Version 1 to Version 2
+//! 10. [remove_storage_info] test remove <key, value > pair from StorageTrie by key
 
 use pchain_types::cryptography::PublicAddress;
 use pchain_world_state::*;

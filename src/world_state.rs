@@ -12,8 +12,9 @@ use std::collections::{HashMap, HashSet};
 use pchain_types::cryptography::{PublicAddress, Sha256Hash};
 
 use crate::db::DB;
+
 use crate::{
-    accounts_trie::{Account, AccountsTrie},
+    accounts_trie::AccountsTrie,
     error::{MptError, WorldStateError},
     storage_trie::StorageTrie,
     version::*,
@@ -28,20 +29,6 @@ pub struct WorldStateChanges {
     pub inserts: HashMap<Vec<u8>, Vec<u8>>,
     pub deletes: HashSet<Vec<u8>>,
     pub new_root_hash: Sha256Hash,
-}
-
-/// `DestoryReturn` is to store the necessary info when user call destory from WorldState
-///
-/// inserts: <key, value> pairs need to be insert into physical db
-///
-/// deletes: keys need to be delete from physical db
-///
-/// data_map: data which need to rebuild WorldState
-#[derive(Debug, Clone)]
-pub struct DestroyWorldStateChanges {
-    pub inserts: HashMap<Vec<u8>, Vec<u8>>,
-    pub deletes: HashSet<Vec<u8>>,
-    pub accounts: HashMap<PublicAddress, Account>,
 }
 
 /// WorldState is a struct to read and update data in trie structrue.
@@ -178,46 +165,33 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         return Ok(self.storage_trie_map.get(address).unwrap());
     }
 
-    /// `destory` is destroy the WorldState return [DestroyReturn](crate::AccountTrie::DestroyReturn)
-    pub fn destroy(&mut self) -> Result<DestroyWorldStateChanges, WorldStateError> {
-        // get and destory the AccountsTrie
-        let mut accounts_destroy_return = self.account_trie_mut().destroy()?;
-        for (address, account) in accounts_destroy_return.accounts.iter_mut() {
-            // get and destory the StorageTrie
-            if let Some(storage_hash) = account.storage_hash() {
-                let mut storage_trie = StorageTrie::<S, V>::open(self.db, storage_hash, address);
-                let storage_destory_return = storage_trie.destroy()?;
-                // merge the info from StorageTrie destroy return to the account trie destroy return
-                accounts_destroy_return
-                    .inserts
-                    .extend(storage_destory_return.inserts);
-                accounts_destroy_return
-                    .deletes
-                    .extend(storage_destory_return.deletes);
-                account.set_storages(storage_destory_return.data_map);
-            }
+    /// `upgrade` consume a WorldState::<V1> instance and return a WorldState::<V2>
+    pub fn upgrade(
+        worldstate: WorldState<'a, S, V1>,
+    ) -> Result<WorldState<'a, S, V2>, WorldStateError> {
+        let (account_v2, storage_info_map) = worldstate.accounts_trie.upgrade()?;
+        let mut storage_map: HashMap<PublicAddress, StorageTrie<'a, S, V2>> = HashMap::new();
+        for (address, storage_hash) in storage_info_map {
+            let storage_trie_v1: StorageTrie<'a, S, V1> = {
+                // suppose the worldstate v1 still have some unclosed changes
+                if worldstate.storage_trie_map.contains_key(&address) {
+                    worldstate
+                        .storage_trie_map
+                        .get(&address)
+                        .unwrap()
+                        .to_owned()
+                } else {
+                    StorageTrie::open(worldstate.db, storage_hash, &address)
+                }
+            };
+            let storage_trie_v2 = storage_trie_v1.upgrade()?;
+            storage_map.insert(address, storage_trie_v2);
         }
-        Ok(accounts_destroy_return)
-    }
-
-    /// `build` is rebuild the WorldState and return [WorldStateChanges] for physical db change
-    pub fn build(
-        &mut self,
-        accounts: HashMap<PublicAddress, Account>,
-    ) -> Result<WorldStateChanges, WorldStateError> {
-        for (address, account) in accounts.into_iter() {
-            let account_trie_mut = self.account_trie_mut();
-            account_trie_mut.set_nonce(&address, account.nonce)?;
-            account_trie_mut.set_balance(&address, account.balance)?;
-            account_trie_mut.set_cbi_version(&address, account.cbi_version)?;
-            account_trie_mut.set_code(&address, account.code.clone())?;
-            if !account.storages().is_empty() {
-                let storage_trie_mut = self.storage_trie_mut(&address)?;
-                storage_trie_mut.batch_set(&account.storages())?;
-            }
-        }
-        // storage_hash of each accounts will be set inside close
-        self.close()
+        Ok(WorldState {
+            accounts_trie: account_v2,
+            storage_trie_map: storage_map,
+            db: worldstate.db,
+        })
     }
 
     /// `close` return all cached changes from the WorldState for caller to create App updates

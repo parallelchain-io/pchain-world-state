@@ -11,6 +11,16 @@ pub type Value = Vec<u8>;
 
 const PUBLIC_KEY: &str = "ipy_VXNiwHNP9mx6-nKxht_ZJNfYoMAcCnLykpq4x_k";
 
+#[derive(Debug, Clone, Default)]
+pub struct AccountInstance {
+    pub nonce: u64,
+    pub balance: u64,
+    pub code: Vec<u8>,
+    pub cbi_version: Option<u32>,
+    pub storage_hash: Vec<u8>,
+    pub storages: HashMap<Vec<u8>, Vec<u8>>,
+}
+
 #[derive(Debug, Clone)]
 struct DummyStorage(HashMap<Key, Value>);
 impl DB for DummyStorage {
@@ -46,28 +56,29 @@ pub fn generate_public_addr() -> PublicAddress {
     public_key
 }
 
-pub fn generate_spec_account() -> (PublicAddress, Account) {
-    let mut account = Account::default();
+pub fn generate_spec_account() -> (PublicAddress, AccountInstance) {
+    let mut account = AccountInstance::default();
     let account_addr = base64url::decode(PUBLIC_KEY).unwrap().try_into().unwrap();
     account.nonce = 1_u64;
     account.balance = 100_000_u64;
+    account.cbi_version = Some(1_u32);
     let mut storages = HashMap::new();
     let specific_key = b"apple".to_vec();
     let specific_value = b"apple_value".to_vec();
     storages.insert(specific_key, specific_value);
-    account.set_storages(storages);
+    account.storages = storages;
     (account_addr, account)
 }
 
-pub fn generate_accounts() -> HashMap<PublicAddress, Account> {
-    let mut accounts_map: HashMap<PublicAddress, Account> = HashMap::new();
-    // generate 100000 Accounts
-    for index in 1..100000 {
-        let mut account = Account::default();
+pub fn generate_accounts() -> HashMap<PublicAddress, AccountInstance> {
+    let mut accounts_map: HashMap<PublicAddress, AccountInstance> = HashMap::new();
+    // generate 10000 Accounts
+    for index in 1..10000 {
+        let mut account = AccountInstance::default();
         let account_address = generate_public_addr();
         account.nonce = index.try_into().unwrap();
         account.balance = (index * 1000).try_into().unwrap();
-        account.cbi_version = 1_u32;
+        account.cbi_version = Some(1_u32);
         account.code = account_address.to_vec();
         // generate 255 storage <key, value> pairs
         let mut storages = HashMap::new();
@@ -75,7 +86,7 @@ pub fn generate_accounts() -> HashMap<PublicAddress, Account> {
             let key = RefHasher::hash(&[index_1]);
             storages.insert(key.to_vec(), account_address.to_vec());
         }
-        account.set_storages(storages);
+        account.storages = storages;
         accounts_map.insert(account_address, account);
     }
     let spec_account = generate_spec_account();
@@ -85,95 +96,46 @@ pub fn generate_accounts() -> HashMap<PublicAddress, Account> {
 
 #[test]
 #[ignore]
-pub fn build_test() {
-    // with 100000 accounts, and each accounts contains 255 <key, value> pair data in storage
-    // the whole test finished in 3350.84s
+pub fn upgrade() {
     println!("start to build in v1....");
-    let mut db_1 = DummyStorage(HashMap::new());
-    let mut ws_1 = WorldState::<DummyStorage, V1>::new(&db_1);
-    let ws_1_changes = ws_1.build(generate_accounts()).unwrap();
-    db_1.apply_changes(ws_1_changes.inserts, ws_1_changes.deletes);
-    println!("db1 {}", db_1.size()); // number of <key, value> pairs in db is 34837001
-    let mut ws_1_new = WorldState::<DummyStorage, V1>::open(&db_1, ws_1_changes.new_root_hash);
-    let start_1 = Instant::now();
-    println!("start to iter...");
-    let account_addr: PublicAddress = base64url::decode(PUBLIC_KEY).unwrap().try_into().unwrap();
-    ws_1_new
-        .storage_trie(&account_addr)
-        .unwrap()
-        .get(&b"apple".to_vec())
-        .unwrap();
-    let accounts = ws_1_new.account_trie().all().unwrap();
-    for (address, _) in accounts.iter() {
-        ws_1_new.storage_trie(&address).unwrap();
+    let mut db = DummyStorage(HashMap::new());
+    let mut ws_1: WorldState<'_, DummyStorage, V1> = WorldState::<DummyStorage, V1>::new(&db);
+    let accounts = generate_accounts();
+    for (address, account) in accounts.into_iter() {
+        let account_trie_mut = ws_1.account_trie_mut();
+        account_trie_mut.set_nonce(&address, account.nonce).unwrap();
+        account_trie_mut
+            .set_balance(&address, account.balance)
+            .unwrap();
+        account_trie_mut
+            .set_cbi_version(&address, account.cbi_version.unwrap())
+            .unwrap();
+        account_trie_mut
+            .set_code(&address, account.code.clone())
+            .unwrap();
+        if !account.storages.is_empty() {
+            let storage_trie_mut = ws_1.storage_trie_mut(&address).unwrap();
+            storage_trie_mut.batch_set(&account.storages).unwrap();
+        }
     }
-    let end_1 = Instant::now();
-    println!(
-        "Time cost: {} milliseconds",
-        end_1.duration_since(start_1).as_millis()
-    );
-
-    let mut db_2 = DummyStorage(HashMap::new());
-    let mut ws_2 = WorldState::<DummyStorage, V2>::new(&db_2);
-    let ws_2_changes = ws_2.build(generate_accounts()).unwrap();
-    db_2.apply_changes(ws_2_changes.inserts, ws_2_changes.deletes);
-    println!("db2 {}", db_2.size()); // number of <key, value> pairs in db is 35138406
-    println!("start to iter...");
-    let start_2 = Instant::now();
-    let mut ws_2_new = WorldState::<DummyStorage, V2>::open(&db_2, ws_2_changes.new_root_hash);
-    let account_addr: PublicAddress = base64url::decode(PUBLIC_KEY).unwrap().try_into().unwrap();
-    ws_2_new
-        .storage_trie(&account_addr)
-        .unwrap()
-        .get(&b"apple".to_vec())
-        .unwrap();
-    let accounts = ws_2_new.account_trie().all().unwrap();
-    for (address, _) in accounts.iter() {
-        ws_2_new.storage_trie(&address).unwrap();
-    }
-    let end_2 = Instant::now();
-    println!(
-        "Time cost: {} milliseconds",
-        end_2.duration_since(start_2).as_millis()
-    );
-}
-
-#[test]
-#[ignore]
-pub fn delete_and_bulid() {
-    println!("start to build in v1....");
-    let mut db_1 = DummyStorage(HashMap::new());
-    let mut ws_1: WorldState<'_, DummyStorage, V1> = WorldState::<DummyStorage, V1>::new(&db_1);
-    let ws_1_changes = ws_1.build(generate_accounts()).unwrap();
-    db_1.apply_changes(ws_1_changes.inserts, ws_1_changes.deletes);
+    let ws_1_changes = ws_1.close().unwrap();
+    db.apply_changes(ws_1_changes.inserts, ws_1_changes.deletes);
     println!("finished build...");
 
-    println!("start destroy..");
+    println!("start upgrade..");
     let start_time = Instant::now();
-    let mut ws1_new = WorldState::<DummyStorage, V1>::open(&db_1, ws_1_changes.new_root_hash);
-    let ws1_destory = ws1_new.destroy().unwrap();
-    db_1.apply_changes(ws1_destory.inserts, ws1_destory.deletes);
-    println!("{:?}", &db_1);
+    let ws1_new = WorldState::<DummyStorage, V1>::open(&db, ws_1_changes.new_root_hash);
+    let mut ws_2 = WorldState::<DummyStorage, V2>::upgrade(ws1_new).unwrap();
+    let ws_2_changes = ws_2.close().unwrap();
+    db.apply_changes(ws_2_changes.inserts, ws_2_changes.deletes);
     let end_time = Instant::now();
     println!(
-        "Destory cost: {} milliseconds",
+        "upgrade cost: {} milliseconds", //179606 milliseconds
         end_time.duration_since(start_time).as_millis()
-    ); // 919583 milliseconds
-
-    println!("start rebuild...");
-    let start_time = Instant::now();
-    let mut db_2 = DummyStorage(HashMap::new());
-    let mut ws_2 = WorldState::<DummyStorage, V2>::new(&db_2);
-    let ws_2_changes = ws_2.build(ws1_destory.accounts).unwrap();
-    db_2.apply_changes(ws_2_changes.inserts, ws_2_changes.deletes);
-    let end_time = Instant::now();
-    println!(
-        "Rebuild cost: {} milliseconds",
-        end_time.duration_since(start_time).as_millis()
-    ); // 1258858 milliseconds
+    );
 
     println!("start to iter...");
-    let mut ws_2_new = WorldState::<DummyStorage, V2>::open(&db_2, ws_2_changes.new_root_hash);
+    let mut ws_2_new = WorldState::<DummyStorage, V2>::open(&db, ws_2_changes.new_root_hash);
     let start_time = Instant::now();
     let accounts = ws_2_new.account_trie().all().unwrap();
     for (address, _) in accounts.iter() {
@@ -181,7 +143,7 @@ pub fn delete_and_bulid() {
     }
     let end_time: Instant = Instant::now();
     println!(
-        "Iter cost: {} milliseconds",
+        "Iter cost: {} milliseconds", //1279 milliseconds
         end_time.duration_since(start_time).as_millis()
-    ); // 5812 milliseconds
+    )
 }

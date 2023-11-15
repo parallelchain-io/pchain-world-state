@@ -10,7 +10,7 @@ use std::{
     marker::PhantomData,
 };
 
-use crate::{Version, VersionProvider};
+use crate::{Version, VersionProvider, V1, V2};
 
 /// Define the methods that a type must implemented to be used as a persistent storage inside WorldState.
 /// The method `get` must be implemented in order to open the Trie.
@@ -62,6 +62,9 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         match self.inserts.get(&search_key) {
             Some(value) => Some(value.to_owned()),
             None => {
+                if self.deletes.contains(&search_key) {
+                    return None;
+                }
                 if let Some(value) = self.storage.get(&search_key) {
                     return Some(value);
                 }
@@ -117,5 +120,17 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
             }
         }
         ret_key
+    }
+}
+
+impl<'a, S: DB + Send + Sync + Clone> KeyInstrumentedDB<'a, S, V1> {
+    pub(crate) fn upgrade(self) -> KeyInstrumentedDB<'a, S, V2> {
+        KeyInstrumentedDB {
+            storage: self.storage,
+            inserts: self.inserts,
+            deletes: self.deletes,
+            prefix: self.prefix,
+            _type: PhantomData,
+        }
     }
 }

@@ -18,8 +18,8 @@ use crate::{
     mpt::{Mpt, Proof},
     proof_node::{proof_level, WSProofNode},
     trie_key::TrieKey,
-    world_state::{DestroyWorldStateChanges, WorldStateChanges},
-    VersionProvider,
+    world_state::WorldStateChanges,
+    VersionProvider, V1, V2,
 };
 
 /// Struct store external account information in blockchain
@@ -37,9 +37,8 @@ pub struct Account {
     pub nonce: u64,
     pub balance: u64,
     pub code: Vec<u8>,
-    pub cbi_version: u32,
+    pub cbi_version: Option<u32>,
     pub storage_hash: Vec<u8>,
-    pub storages: HashMap<Vec<u8>, Vec<u8>>,
 }
 
 impl Account {
@@ -50,20 +49,8 @@ impl Account {
             None
         }
     }
-
-    pub fn storages(&self) -> HashMap<Vec<u8>, Vec<u8>> {
-        self.storages.clone()
-    }
-
     pub fn set_storage_hash(&mut self, storage_hash: Vec<u8>) {
         self.storage_hash = storage_hash;
-    }
-
-    pub fn set_storages(&mut self, storages: HashMap<Vec<u8>, Vec<u8>>) {
-        if storages.is_empty() {
-            return;
-        }
-        self.storages = storages;
     }
 }
 
@@ -173,29 +160,29 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
 
     /// `cbi_version` is return the cbi_version of given account address
     ///
-    /// 0 if the account address is not found in world state
+    /// None if the account address is not found in world state
     ///
     /// Error if state_hash does not exist or missed some trie nodes
-    pub fn cbi_version(&self, address: &PublicAddress) -> Result<u32, MptError> {
+    pub fn cbi_version(&self, address: &PublicAddress) -> Result<Option<u32>, MptError> {
         let cbi_version_key: Vec<u8> = TrieKey::<V>::account_key(address, AccountField::CbiVersion);
         self.trie
             .get(&cbi_version_key)
-            .map(|value| value.map_or(0, |value| u32::from_le_bytes(value.try_into().unwrap())))
+            .map(|value| value.map(|value| u32::from_le_bytes(value.try_into().unwrap())))
     }
 
     /// `cbi_version_with_proof` is return the cbi_version with proof of given account address
     ///
-    /// (empty vector, 0) if the account address is not found in world state
+    /// (empty vector, None) if the account address is not found in world state
     ///
     /// Error if state_hash does not exist or missed some trie nodes
     pub fn cbi_version_with_proof(
         &self,
         address: &PublicAddress,
-    ) -> Result<(Proof, u32), MptError> {
+    ) -> Result<(Proof, Option<u32>), MptError> {
         let cbi_version_key: Vec<u8> = TrieKey::<V>::account_key(address, AccountField::CbiVersion);
         self.get_with_proof_from_trie_key(&cbi_version_key)
             .map(|(proof, value)| {
-                let value = value.map_or(0, |value| u32::from_le_bytes(value.try_into().unwrap()));
+                let value = value.map(|value| u32::from_le_bytes(value.try_into().unwrap()));
                 (proof, value)
             })
     }
@@ -267,9 +254,9 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
                 AccountField::ContractCode => account_value.code = value,
                 AccountField::CbiVersion => {
                     account_value.cbi_version =
-                        u32::from_le_bytes(value.try_into().map_err(|_| {
+                        Some(u32::from_le_bytes(value.try_into().map_err(|_| {
                             WorldStateError::DecodeOrEncodeError(DecodeOrEncodeError::DecodeError)
-                        })?);
+                        })?));
                 }
                 AccountField::StorageHash => account_value.set_storage_hash(value),
             }
@@ -410,17 +397,19 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
             new_root_hash: mpt_changes.2,
         }
     }
+}
 
-    /// `destory` is called by [WorldState](crate::world_state::WorldState) to destroy the existing AccountTrie
-    ///
-    /// Return the [DestoryWorldStateReturn] for physical db to do the physical deletion and future WorldState rebuild
-    pub(crate) fn destroy(&mut self) -> Result<DestroyWorldStateChanges, WorldStateError> {
+pub(crate) type AccountUpgradeReturn<'a, S, V2> =
+    (AccountsTrie<'a, S, V2>, HashMap<PublicAddress, [u8; 32]>);
+
+impl<'a, S: DB + Send + Sync + Clone> AccountsTrie<'a, S, crate::V1> {
+    pub(crate) fn upgrade(mut self) -> Result<AccountUpgradeReturn<'a, S, V2>, WorldStateError> {
         let mut data_map: HashMap<PublicAddress, Account> = HashMap::new();
         let mut key_set: HashSet<Vec<u8>> = HashSet::new();
         self.trie.iterate_all(|key, value| {
             key_set.insert(key.clone());
-            let account_address = TrieKey::<V>::account_address(&key)?;
-            let account_field: AccountField = TrieKey::<V>::account_field(&key)?;
+            let account_address = TrieKey::<V1>::account_address(&key)?;
+            let account_field: AccountField = TrieKey::<V1>::account_field(&key)?;
             let account = match data_map.get_mut(&account_address) {
                 Some(account) => account,
                 None => {
@@ -443,9 +432,10 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
                     account.code = value;
                 }
                 AccountField::CbiVersion => {
-                    account.cbi_version = u32::from_le_bytes(value.try_into().map_err(|_| {
-                        WorldStateError::DecodeOrEncodeError(DecodeOrEncodeError::DecodeError)
-                    })?);
+                    account.cbi_version =
+                        Some(u32::from_le_bytes(value.try_into().map_err(|_| {
+                            WorldStateError::DecodeOrEncodeError(DecodeOrEncodeError::DecodeError)
+                        })?));
                 }
                 AccountField::StorageHash => {
                     account.set_storage_hash(value);
@@ -457,11 +447,38 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         self.trie.batch_remove(&key_set)?;
         // destroy the account trie
         self.trie.deinit()?;
-        let mpt_changes = self.trie.close();
-        Ok(DestroyWorldStateChanges {
-            inserts: mpt_changes.0,
-            deletes: mpt_changes.1,
-            accounts: data_map,
-        })
+        // get v2 mpt for accounts
+        let mut trie_v2 = self.trie.upgrade();
+        // rebuild all accounts(except storage_hash) and storages
+        let mut account_info_map: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
+        let mut storage_info_map: HashMap<PublicAddress, [u8; 32]> = HashMap::new();
+        for (address, account) in data_map {
+            if account.nonce != 0_u64 {
+                let nonce_key = TrieKey::<V2>::account_key(&address, AccountField::Nonce);
+                let value = account.nonce.to_le_bytes().to_vec();
+                account_info_map.insert(nonce_key, value);
+            }
+            if account.balance != 0_u64 {
+                let balance_key = TrieKey::<V2>::account_key(&address, AccountField::Balance);
+                let value = account.balance.to_le_bytes().to_vec();
+                account_info_map.insert(balance_key, value);
+            }
+            if !account.code.is_empty() {
+                let code_key = TrieKey::<V2>::account_key(&address, AccountField::ContractCode);
+                account_info_map.insert(code_key, account.code.clone());
+            }
+            if account.cbi_version.is_some() {
+                let cbi_version_key =
+                    TrieKey::<V2>::account_key(&address, AccountField::CbiVersion);
+                let value = account.cbi_version.unwrap().to_le_bytes().to_vec();
+                account_info_map.insert(cbi_version_key, value);
+            }
+            if let Some(storage_hash) = account.storage_hash() {
+                storage_info_map.insert(address, storage_hash);
+            }
+        }
+        // batch insert account info
+        trie_v2.batch_set(&account_info_map)?;
+        Ok((AccountsTrie { trie: trie_v2 }, storage_info_map))
     }
 }

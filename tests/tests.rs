@@ -276,7 +276,7 @@ pub fn update_cbi_version() {
             .account_trie()
             .cbi_version(&env_1.address)
             .unwrap(),
-        0_u32
+        None
     );
     genesis_ws_v1
         .account_trie_mut()
@@ -292,7 +292,7 @@ pub fn update_cbi_version() {
             .account_trie()
             .cbi_version(&env_1.address)
             .unwrap(),
-        1_u32
+        Some(1_u32)
     );
     //================ Version2 ================
     let mut env_2 = TestEnv::default();
@@ -302,7 +302,7 @@ pub fn update_cbi_version() {
             .account_trie()
             .cbi_version(&env_2.address)
             .unwrap(),
-        0_u32
+        None
     );
     genesis_ws_v2
         .account_trie_mut()
@@ -318,7 +318,7 @@ pub fn update_cbi_version() {
             .account_trie()
             .cbi_version(&env_2.address)
             .unwrap(),
-        1_u32
+        Some(1_u32)
     );
 }
 
@@ -626,7 +626,7 @@ pub fn search_with_proof() {
             .cbi_version_with_proof(&env_1.address)
             .unwrap()
             .1,
-        1_u32
+        Some(1_u32)
     );
     println!(
         "proof of storage hash {:?}",
@@ -717,7 +717,7 @@ pub fn search_with_proof() {
             .cbi_version_with_proof(&env_2.address)
             .unwrap()
             .1,
-        1_u32
+        Some(1_u32)
     );
     println!(
         "proof of storage hash {:?}",
@@ -742,197 +742,7 @@ pub fn search_with_proof() {
 }
 
 #[test]
-pub fn destroy() {
-    // variables
-    let code_str = "Hello world";
-    let code_vec = code_str.as_bytes().to_vec();
-    let key_apple: Key = b"apple".to_vec();
-    let value_apple: Value = b"1234".to_vec();
-    let key_banana: Key = b"banana".to_vec();
-    let value_banana: Value = b"12345".to_vec();
-
-    //================ Version1 ================
-    // init account trie with 2 accounts
-    let mut env_1 = TestEnvWithSeveralAccounts::default();
-    let mut genesis_ws_v1 = WorldState::<DummyStorage, V1>::new(&env_1.db);
-    // account 1
-    let account_trie_mut_ref = genesis_ws_v1.account_trie_mut();
-    account_trie_mut_ref
-        .set_nonce(&env_1.addresses.get(0).unwrap(), 1_u64)
-        .unwrap();
-    account_trie_mut_ref
-        .set_balance(&env_1.addresses.get(0).unwrap(), 100_000_u64)
-        .unwrap();
-    account_trie_mut_ref
-        .set_cbi_version(&env_1.addresses.get(0).unwrap(), 1_u32)
-        .unwrap();
-    account_trie_mut_ref
-        .set_code(&env_1.addresses.get(0).unwrap(), code_vec.clone())
-        .unwrap();
-    // account 2
-    account_trie_mut_ref
-        .set_nonce(&env_1.addresses.get(1).unwrap(), 1_u64)
-        .unwrap();
-    account_trie_mut_ref
-        .set_balance(&env_1.addresses.get(1).unwrap(), 200_000_u64)
-        .unwrap();
-    account_trie_mut_ref
-        .set_cbi_version(&env_1.addresses.get(1).unwrap(), 2_u32)
-        .unwrap();
-    account_trie_mut_ref
-        .set_code(&env_1.addresses.get(1).unwrap(), code_vec.clone())
-        .unwrap();
-    // storage 1
-    let storage_trie_mut_ref_1 = genesis_ws_v1
-        .storage_trie_mut(env_1.addresses.get(0).unwrap())
-        .unwrap();
-    storage_trie_mut_ref_1
-        .set(&key_apple, value_apple.clone())
-        .unwrap();
-    storage_trie_mut_ref_1
-        .set(&key_banana, value_banana.clone())
-        .unwrap();
-    // storage 2
-    let storage_trie_mut_ref_2 = genesis_ws_v1
-        .storage_trie_mut(env_1.addresses.get(1).unwrap())
-        .unwrap();
-    storage_trie_mut_ref_2
-        .set(&key_apple, value_apple.clone())
-        .unwrap();
-    storage_trie_mut_ref_2
-        .set(&key_banana, value_banana.clone())
-        .unwrap();
-    // close changes
-    let ws_change_v1 = genesis_ws_v1.close().unwrap();
-    env_1
-        .db
-        .apply_changes(ws_change_v1.inserts, ws_change_v1.deletes);
-    // iter the AccountTrie and StorageTrie
-    let mut new_ws_v1 = WorldState::<DummyStorage, V1>::open(&env_1.db, ws_change_v1.new_root_hash);
-    let accounts_trie_ref = new_ws_v1.account_trie();
-    println!("=======================iter account trie after insertion==========================");
-    accounts_trie_ref
-        .all()
-        .unwrap()
-        .into_iter()
-        .for_each(|(key, value)| println!("account_address: {:?}, account_info: {:?}", key, value));
-    println!("=======================iter storage trie after insertion==========================");
-    let storage_trie_ref_1 = new_ws_v1.storage_trie(&env_1.addresses.get(0).unwrap());
-    storage_trie_ref_1
-        .unwrap()
-        .all()
-        .unwrap()
-        .into_iter()
-        .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
-    let storage_trie_ref_2 = new_ws_v1.storage_trie(&env_1.addresses.get(1).unwrap());
-    storage_trie_ref_2
-        .unwrap()
-        .all()
-        .unwrap()
-        .into_iter()
-        .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
-
-    // destroy
-    let destroy_return = new_ws_v1.destroy().unwrap();
-    env_1
-        .db
-        .apply_changes(destroy_return.inserts, destroy_return.deletes);
-    println!("=======================db after destory==========================");
-    println!("{:?}", &env_1.db);
-
-    //================ Version2 ================
-    // init account trie with 2 accounts
-    let mut env_2 = TestEnvWithSeveralAccounts::default();
-    let mut genesis_ws_v2 = WorldState::<DummyStorage, V2>::new(&env_2.db);
-    // account 1
-    let account_trie_mut_ref = genesis_ws_v2.account_trie_mut();
-    account_trie_mut_ref
-        .set_nonce(&env_2.addresses.get(0).unwrap(), 1_u64)
-        .unwrap();
-    account_trie_mut_ref
-        .set_balance(&env_2.addresses.get(0).unwrap(), 100_000_u64)
-        .unwrap();
-    account_trie_mut_ref
-        .set_cbi_version(&env_2.addresses.get(1).unwrap(), 1_u32)
-        .unwrap();
-    account_trie_mut_ref
-        .set_code(&env_2.addresses.get(1).unwrap(), code_vec.clone())
-        .unwrap();
-    // account 2
-    account_trie_mut_ref
-        .set_nonce(&env_2.addresses.get(1).unwrap(), 1_u64)
-        .unwrap();
-    account_trie_mut_ref
-        .set_balance(&env_2.addresses.get(1).unwrap(), 200_000_u64)
-        .unwrap();
-    account_trie_mut_ref
-        .set_cbi_version(&env_2.addresses.get(1).unwrap(), 2_u32)
-        .unwrap();
-    account_trie_mut_ref
-        .set_code(&env_2.addresses.get(1).unwrap(), code_vec.clone())
-        .unwrap();
-    // storage 1
-    let storage_trie_mut_ref_1 = genesis_ws_v2
-        .storage_trie_mut(env_2.addresses.get(0).unwrap())
-        .unwrap();
-    storage_trie_mut_ref_1
-        .set(&key_apple, value_apple.clone())
-        .unwrap();
-    storage_trie_mut_ref_1
-        .set(&key_banana, value_banana.clone())
-        .unwrap();
-    // storage 2
-    let storage_trie_mut_ref_2 = genesis_ws_v2
-        .storage_trie_mut(env_2.addresses.get(1).unwrap())
-        .unwrap();
-    storage_trie_mut_ref_2
-        .set(&key_apple, value_apple.clone())
-        .unwrap();
-    storage_trie_mut_ref_2
-        .set(&key_banana, value_banana.clone())
-        .unwrap();
-    // close changes
-    let ws_change_v2 = genesis_ws_v2.close().unwrap();
-    env_2
-        .db
-        .apply_changes(ws_change_v2.inserts, ws_change_v2.deletes);
-    // iter the AccountTrie and StorageTrie
-    let mut new_ws_v2 = WorldState::<DummyStorage, V2>::open(&env_2.db, ws_change_v2.new_root_hash);
-    let accounts_trie_ref = new_ws_v2.account_trie();
-    println!("=======================iter account trie after insertion==========================");
-    accounts_trie_ref
-        .all()
-        .unwrap()
-        .into_iter()
-        .for_each(|(key, value)| println!("account_address: {:?}, account_info: {:?}", key, value));
-    println!("=======================iter storage trie after insertion==========================");
-    let storage_trie_ref_1 = new_ws_v2.storage_trie(&env_2.addresses.get(0).unwrap());
-    storage_trie_ref_1
-        .unwrap()
-        .all()
-        .unwrap()
-        .into_iter()
-        .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
-    let storage_trie_ref_2 = new_ws_v2.storage_trie(&env_2.addresses.get(1).unwrap());
-    storage_trie_ref_2
-        .unwrap()
-        .all()
-        .unwrap()
-        .into_iter()
-        .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
-
-    // destroy
-    let destroy_return = new_ws_v2.destroy().unwrap();
-    env_2
-        .db
-        .apply_changes(destroy_return.inserts, destroy_return.deletes);
-    println!("=======================db after destory==========================");
-    println!("{:?}", &env_2.db);
-}
-
-#[test]
-pub fn destroy_and_rebuild_in_same_version() {
-    // variables
+pub fn upgrade() {
     let code_str = "Hello world";
     let code_vec = code_str.as_bytes().to_vec();
     let key_apple: Key = b"apple".to_vec();
@@ -941,175 +751,38 @@ pub fn destroy_and_rebuild_in_same_version() {
     let value_banana: Value = b"12345".to_vec();
 
     // init account trie with 2 accounts
-    let mut env_1 = TestEnvWithSeveralAccounts::default();
-    let mut ws_1 = WorldState::<DummyStorage, V1>::new(&env_1.db);
+    let mut env = TestEnvWithSeveralAccounts::default();
+    let mut ws_1 = WorldState::<DummyStorage, V1>::new(&env.db);
     // account 1
     let account_trie_mut_ref = ws_1.account_trie_mut();
     account_trie_mut_ref
-        .set_nonce(&env_1.addresses.get(0).unwrap(), 1_u64)
+        .set_nonce(&env.addresses.get(0).unwrap(), 1_u64)
         .unwrap();
     account_trie_mut_ref
-        .set_balance(&env_1.addresses.get(0).unwrap(), 100_000_u64)
+        .set_balance(&env.addresses.get(0).unwrap(), 100_000_u64)
         .unwrap();
     account_trie_mut_ref
-        .set_cbi_version(&env_1.addresses.get(0).unwrap(), 1_u32)
+        .set_cbi_version(&env.addresses.get(0).unwrap(), 1_u32)
         .unwrap();
     account_trie_mut_ref
-        .set_code(&env_1.addresses.get(0).unwrap(), code_vec.clone())
+        .set_code(&env.addresses.get(0).unwrap(), code_vec.clone())
         .unwrap();
     // account 2
     account_trie_mut_ref
-        .set_nonce(&env_1.addresses.get(1).unwrap(), 1_u64)
+        .set_nonce(&env.addresses.get(1).unwrap(), 1_u64)
         .unwrap();
     account_trie_mut_ref
-        .set_balance(&env_1.addresses.get(1).unwrap(), 200_000_u64)
+        .set_balance(&env.addresses.get(1).unwrap(), 200_000_u64)
         .unwrap();
     account_trie_mut_ref
-        .set_cbi_version(&env_1.addresses.get(1).unwrap(), 2_u32)
+        .set_cbi_version(&env.addresses.get(1).unwrap(), 2_u32)
         .unwrap();
     account_trie_mut_ref
-        .set_code(&env_1.addresses.get(1).unwrap(), code_vec.clone())
-        .unwrap();
-    // storage 1
-    let storage_trie_mut_ref_1 = ws_1
-        .storage_trie_mut(env_1.addresses.get(0).unwrap())
-        .unwrap();
-    storage_trie_mut_ref_1
-        .set(&key_apple, value_apple.clone())
-        .unwrap();
-    storage_trie_mut_ref_1
-        .set(&key_banana, value_banana.clone())
-        .unwrap();
-    // storage 2
-    let storage_trie_mut_ref_2 = ws_1
-        .storage_trie_mut(env_1.addresses.get(1).unwrap())
-        .unwrap();
-    storage_trie_mut_ref_2
-        .set(&key_apple, value_apple.clone())
-        .unwrap();
-    storage_trie_mut_ref_2
-        .set(&key_banana, value_banana.clone())
-        .unwrap();
-    // close changes
-    let ws_change_1 = ws_1.close().unwrap();
-    env_1
-        .db
-        .apply_changes(ws_change_1.inserts, ws_change_1.deletes);
-    let db_1_record = env_1.db.clone();
-    // iter the AccountTrie and StorageTrie
-    let mut new_ws_1 = WorldState::<DummyStorage, V1>::open(&env_1.db, ws_change_1.new_root_hash);
-    let accounts_trie_ref = new_ws_1.account_trie();
-    println!("=======================iter account trie after insertion==========================");
-    accounts_trie_ref
-        .all()
-        .unwrap()
-        .into_iter()
-        .for_each(|(key, value)| println!("account_address: {:?}, account_info: {:?}", key, value));
-    println!("=======================iter storage trie after insertion==========================");
-    let storage_trie_ref_1 = new_ws_1.storage_trie(&env_1.addresses.get(0).unwrap());
-    storage_trie_ref_1
-        .unwrap()
-        .all()
-        .unwrap()
-        .into_iter()
-        .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
-    let storage_trie_ref_2 = new_ws_1.storage_trie(&env_1.addresses.get(1).unwrap());
-    storage_trie_ref_2
-        .unwrap()
-        .all()
-        .unwrap()
-        .into_iter()
-        .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
-
-    // destroy
-    let destroy_return = new_ws_1.destroy().unwrap();
-    env_1
-        .db
-        .apply_changes(destroy_return.inserts, destroy_return.deletes);
-    println!("=======================db after destory==========================");
-    println!("{:?}", &env_1.db);
-
-    // rebuild
-    let mut env_2 = TestEnvWithSeveralAccounts::default();
-    let mut ws_2 = WorldState::<DummyStorage, V1>::new(&env_1.db);
-    let ws_change_2 = ws_2.build(destroy_return.accounts).unwrap();
-    env_2
-        .db
-        .apply_changes(ws_change_2.inserts, ws_change_2.deletes);
-    let mut new_ws_2 = WorldState::<DummyStorage, V1>::open(&env_2.db, ws_change_2.new_root_hash);
-    println!("=======================iter account trie after rebuild==========================");
-    let accounts_trie_ref = new_ws_2.account_trie();
-    accounts_trie_ref
-        .all()
-        .unwrap()
-        .into_iter()
-        .for_each(|(key, value)| println!("account_address: {:?}, account_info: {:?}", key, value));
-    println!("=======================iter storage trie after rebbuild==========================");
-    let storage_trie_ref_1 = new_ws_2.storage_trie(&env_2.addresses.get(0).unwrap());
-    let storage_iter_1 = storage_trie_ref_1.unwrap().all().unwrap();
-    assert!(storage_iter_1.clone().contains_key(&key_apple));
-    assert!(storage_iter_1.clone().contains_key(&key_banana));
-    storage_iter_1
-        .into_iter()
-        .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
-    let storage_trie_ref_2 = new_ws_2.storage_trie(&env_2.addresses.get(1).unwrap());
-    let storage_iter_2 = storage_trie_ref_2.unwrap().all().unwrap();
-    assert!(storage_iter_2.clone().contains_key(&key_apple));
-    assert!(storage_iter_2.clone().contains_key(&key_banana));
-    storage_iter_2
-        .into_iter()
-        .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
-
-    // check if key, value in db2 match in db1 record
-    assert_eq!(db_1_record.size(), env_2.db.size());
-    for (key, value) in db_1_record.0.into_iter() {
-        assert!(env_2.db.0.contains_key(&key));
-        assert_eq!(*env_2.db.0.get(&key).unwrap(), value)
-    }
-}
-
-#[test]
-pub fn destroy_v1_rebuild_v2() {
-    let code_str = "Hello world";
-    let code_vec = code_str.as_bytes().to_vec();
-    let key_apple: Key = b"apple".to_vec();
-    let value_apple: Value = b"1234".to_vec();
-    let key_banana: Key = b"banana".to_vec();
-    let value_banana: Value = b"12345".to_vec();
-
-    // init account trie with 2 accounts
-    let mut env_1 = TestEnvWithSeveralAccounts::default();
-    let mut ws_1 = WorldState::<DummyStorage, V1>::new(&env_1.db);
-    // account 1
-    let account_trie_mut_ref = ws_1.account_trie_mut();
-    account_trie_mut_ref
-        .set_nonce(&env_1.addresses.get(0).unwrap(), 1_u64)
-        .unwrap();
-    account_trie_mut_ref
-        .set_balance(&env_1.addresses.get(0).unwrap(), 100_000_u64)
-        .unwrap();
-    account_trie_mut_ref
-        .set_cbi_version(&env_1.addresses.get(0).unwrap(), 1_u32)
-        .unwrap();
-    account_trie_mut_ref
-        .set_code(&env_1.addresses.get(0).unwrap(), code_vec.clone())
-        .unwrap();
-    // account 2
-    account_trie_mut_ref
-        .set_nonce(&env_1.addresses.get(1).unwrap(), 1_u64)
-        .unwrap();
-    account_trie_mut_ref
-        .set_balance(&env_1.addresses.get(1).unwrap(), 200_000_u64)
-        .unwrap();
-    account_trie_mut_ref
-        .set_cbi_version(&env_1.addresses.get(1).unwrap(), 2_u32)
-        .unwrap();
-    account_trie_mut_ref
-        .set_code(&env_1.addresses.get(1).unwrap(), code_vec.clone())
+        .set_code(&env.addresses.get(1).unwrap(), code_vec.clone())
         .unwrap();
     // storage 1
     let storage_trie_mut_ref = ws_1
-        .storage_trie_mut(env_1.addresses.get(0).unwrap())
+        .storage_trie_mut(env.addresses.get(0).unwrap())
         .unwrap();
     storage_trie_mut_ref
         .set(&key_apple, value_apple.clone())
@@ -1119,11 +792,10 @@ pub fn destroy_v1_rebuild_v2() {
         .unwrap();
     // close changes
     let ws_change_1 = ws_1.close().unwrap();
-    env_1
-        .db
+    env.db
         .apply_changes(ws_change_1.inserts, ws_change_1.deletes);
     // iter the AccountTrie and StorageTrie
-    let mut new_ws_1 = WorldState::<DummyStorage, V1>::open(&env_1.db, ws_change_1.new_root_hash);
+    let mut new_ws_1 = WorldState::<DummyStorage, V1>::open(&env.db, ws_change_1.new_root_hash);
     let accounts_trie_ref = new_ws_1.account_trie();
     println!("=======================iter account trie after insertion==========================");
     accounts_trie_ref
@@ -1132,45 +804,46 @@ pub fn destroy_v1_rebuild_v2() {
         .into_iter()
         .for_each(|(key, value)| println!("account_address: {:?}, account_info: {:?}", key, value));
     println!("=======================iter storage trie after insertion==========================");
-    let storage_trie_ref = new_ws_1.storage_trie(&env_1.addresses.get(0).unwrap());
+    let storage_trie_ref = new_ws_1.storage_trie(&env.addresses.get(0).unwrap());
     storage_trie_ref
         .unwrap()
         .all()
         .unwrap()
         .into_iter()
         .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
-
-    // destroy
-    let destroy_return = new_ws_1.destroy().unwrap();
-    env_1
-        .db
-        .apply_changes(destroy_return.inserts, destroy_return.deletes);
-    println!("=======================db after destory==========================");
-    println!("{:?}", &env_1.db);
-
-    // rebuild
-    let mut env_2 = TestEnvWithSeveralAccounts::default();
-    let mut ws_2 = WorldState::<DummyStorage, V2>::new(&env_2.db);
-    let ws_change_2 = ws_2.build(destroy_return.accounts).unwrap();
-    env_2
-        .db
-        .apply_changes(ws_change_2.inserts, ws_change_2.deletes);
-    let mut new_ws_2 = WorldState::<DummyStorage, V2>::open(&env_2.db, ws_change_2.new_root_hash);
-    let accounts_trie_ref = new_ws_2.account_trie();
-    println!("=======================iter account after rebuild==========================");
+    println!("======================db after insertion =================================");
+    println!("{:?}", &env.db);
+    // upgrade
+    let mut ws_2 = WorldState::<DummyStorage, V1>::upgrade(new_ws_1).unwrap();
+    let ws_2_changes = ws_2.close().unwrap();
+    env.db
+        .apply_changes(ws_2_changes.inserts, ws_2_changes.deletes);
+    // open ws_2
+    let mut ws_2 = WorldState::<DummyStorage, V2>::open(&env.db, ws_2_changes.new_root_hash);
+    let accounts_trie_ref = ws_2.account_trie();
+    println!("=======================iter account trie after upgrade==========================");
     accounts_trie_ref
         .all()
         .unwrap()
         .into_iter()
         .for_each(|(key, value)| println!("account_address: {:?}, account_info: {:?}", key, value));
-    let storage_trie_ref = new_ws_2.storage_trie(&env_2.addresses.get(0).unwrap());
-    println!("=======================iter storage after rebuild==========================");
-    let storage_tire_iter = storage_trie_ref.unwrap().all().unwrap();
-    assert!(storage_tire_iter.contains_key(&key_apple));
-    assert!(storage_tire_iter.contains_key(&key_banana));
-    storage_tire_iter
+    println!("=======================iter storage trie after upgrade==========================");
+    let storage_trie_ref = ws_2.storage_trie(&env.addresses.get(0).unwrap()).unwrap();
+    storage_trie_ref
+        .clone()
+        .all()
+        .unwrap()
         .into_iter()
         .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
+    assert!(storage_trie_ref.contains(&key_apple).unwrap());
+    assert_eq!(storage_trie_ref.get(&key_apple).unwrap(), Some(value_apple));
+    assert!(storage_trie_ref.contains(&key_banana).unwrap());
+    assert_eq!(
+        storage_trie_ref.get(&key_banana).unwrap(),
+        Some(value_banana)
+    );
+    println!("======================db after upgrade =================================");
+    println!("{:?}", &env.db);
 }
 
 #[test]

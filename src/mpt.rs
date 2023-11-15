@@ -390,6 +390,33 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
     }
 }
 
+impl<'a, S: DB + Send + Sync + Clone> Mpt<'a, S, crate::V1> {
+    pub(crate) fn upgrade(self) -> Mpt<'a, S, crate::V2> {
+        // upgrade
+        let mut new_storage: KeyInstrumentedDB<'a, S, crate::V2> = self.storage.upgrade();
+        // compute root_hash for a empty trie in V2
+        let mut default_root_hash = Default::default();
+        let key: Vec<u8> = RefHasher::hash(NULL_NODE_KEY).to_vec();
+        let value: Vec<u8> = NULL_NODE_VALUE.to_vec();
+        new_storage.put(key, value);
+        let mut genesis_mpt: Mpt<S, crate::V2> = Mpt {
+            storage: new_storage.clone(),
+            root_hash: default_root_hash,
+        };
+        let new_root_hash = {
+            let mut trie =
+                TrieDBMutBuilder::<ExtensionLayout>::new(&mut genesis_mpt, &mut default_root_hash)
+                    .build();
+            trie.commit();
+            *trie.root()
+        };
+        Mpt {
+            storage: new_storage,
+            root_hash: new_root_hash,
+        }
+    }
+}
+
 /// Implemented to meet a requirement of Parity's Base-16 Modified Merkle Tree ("Trie")
 ///
 /// Database must implement this HashDB trait to create mutable trie.

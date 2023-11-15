@@ -20,15 +20,12 @@
 //! ```
 //!
 //! # Example
-//! ``` ignore
-//! // destroy the old world state ws1
-//! let destroy_return = ws1.destroy();
-//! // user need to apply the physical db change by destroy_return.inserts, and destroy_return.deletes
-//! // init the new world state ws2
-//! let ws2 = WorldState::<DummyStorage, V2>::new(&storage);
-//! // build the old world state in ws2
-//! let ws2_change = ws2.build(destroy_return.data_map);
-//! // user need to apply the physical db change by ws2_change.inserts, and ws2_change.deletes
+//! ```ignore
+//! // upgrade worldstate v1 to worldstate v2
+//! let ws_2 = WorldState::<DummyStorage, V1>::upgrade(ws_1);
+//! // get changes during the upgrades
+//! let ws_changes = ws_2.close();
+//! // user need to apply the physical db change by ws_change.inserts, and ws_change.deletes
 //! ```
 
 pub mod accounts_trie;

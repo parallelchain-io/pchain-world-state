@@ -161,9 +161,8 @@ impl<'a, S: DB + Send + Sync + Clone> StorageTrie<'a, S, V1> {
         let mut data_map: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
         // check current root hash is equal to empty trie root hash
         if self.trie.root_hash() == RefHasher::hash(NULL_NODE_KEY) {
-            self.trie.deinit()?;
             // get the V2 mpt with the empty root hash
-            let mpt_v2: Mpt<'a, S, V2> = self.trie.upgrade();
+            let mpt_v2: Mpt<'a, S, V2> = self.trie.deinit_and_upgrade()?;
             return Ok(StorageTrie { trie: mpt_v2 });
         }
         let mut key_set: HashSet<Vec<u8>> = HashSet::new();
@@ -176,10 +175,8 @@ impl<'a, S: DB + Send + Sync + Clone> StorageTrie<'a, S, V1> {
         })?;
         // batch delete
         self.trie.batch_remove(&key_set)?;
-        // after delete all <key, value> pair, destroy the empty trie
-        self.trie.deinit()?;
-        // get the V2 mpt for stroage
-        let mut trie_v2 = self.trie.upgrade();
+        // after delete all <key, value> pair, destroy the empty trie and get the V2 mpt for stroage
+        let mut trie_v2 = self.trie.deinit_and_upgrade()?;
         // batch insert all data into the new mpt
         trie_v2.batch_set(&data_map)?;
         Ok(StorageTrie { trie: trie_v2 })

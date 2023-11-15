@@ -82,36 +82,6 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
         Mpt { storage, root_hash }
     }
 
-    /// `deinit` is to remove the root hash by add the root hash into KeyInstrumentedDB.deletes when the trie is empty
-    pub(crate) fn deinit(&mut self) -> Result<(), MptError> {
-        let empty_root_hash = RefHasher::hash(NULL_NODE_KEY).to_vec();
-        // check if root_hash is equal to empty root hash
-        if self.root_hash() != RefHasher::hash(NULL_NODE_KEY) {
-            return Err(MptError::InvalidStateRoot);
-        }
-        match <V>::version() {
-            Version::V1 => {
-                // try to open the trie with the current root hash
-                let trie = TrieDBBuilder::<NoExtensionLayout>::new(self, &self.root_hash).build();
-                if trie.iter().is_ok() {
-                    // need to hard delete the root node
-                    self.storage.delete(empty_root_hash);
-                }
-                // else the root hash has already been deleted
-            }
-            Version::V2 => {
-                // try to open the trie with the current root hash
-                let trie = TrieDBBuilder::<ExtensionLayout>::new(self, &self.root_hash).build();
-                if trie.iter().is_ok() {
-                    // need to hard delete the root node
-                    self.storage.delete(empty_root_hash);
-                }
-                // else the root hash has already been deleted
-            }
-        }
-        Ok(())
-    }
-
     /// `open` is to open the trie from give storage source and state_hash
     pub(crate) fn open(storage: KeyInstrumentedDB<'a, S, V>, root_hash: Sha256Hash) -> Self {
         let mpt: Mpt<S, V> = Mpt { storage, root_hash };
@@ -391,7 +361,20 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
 }
 
 impl<'a, S: DB + Send + Sync + Clone> Mpt<'a, S, crate::V1> {
-    pub(crate) fn upgrade(self) -> Mpt<'a, S, crate::V2> {
+    pub(crate) fn deinit_and_upgrade(mut self) -> Result<Mpt<'a, S, crate::V2>, MptError> {
+        // deinit the the V1 mpt
+        let empty_root_hash = RefHasher::hash(NULL_NODE_KEY).to_vec();
+        // check if root_hash is equal to empty root hash
+        if self.root_hash() != RefHasher::hash(NULL_NODE_KEY) {
+            return Err(MptError::InvalidStateRoot);
+        }
+        let trie = TrieDBBuilder::<NoExtensionLayout>::new(&self, &self.root_hash).build();
+        if trie.iter().is_ok() {
+            // need to hard delete the root node
+            self.storage.delete(empty_root_hash);
+        }
+        // else the root hash has already been deleted
+
         // upgrade
         let mut new_storage: KeyInstrumentedDB<'a, S, crate::V2> = self.storage.upgrade();
         // compute root_hash for a empty trie in V2
@@ -410,10 +393,10 @@ impl<'a, S: DB + Send + Sync + Clone> Mpt<'a, S, crate::V1> {
             trie.commit();
             *trie.root()
         };
-        Mpt {
+        Ok(Mpt {
             storage: new_storage,
             root_hash: new_root_hash,
-        }
+        })
     }
 }
 
@@ -667,9 +650,9 @@ mod test {
         println!("{:?}", &env.db);
         // do de_init
         let db = KeyInstrumentedDB::<DummyStorage, V1>::new(&env.db, env.address.to_vec());
-        let mut ret = Mpt::<DummyStorage, V1>::open(db, ws_changes.2);
-        ret.deinit().unwrap();
-        let ws_changes = ret.close();
+        let ret = Mpt::<DummyStorage, V1>::open(db, ws_changes.2);
+        let mut mpt_v2 = ret.deinit_and_upgrade().unwrap();
+        let ws_changes = mpt_v2.close();
         env.db.apply_changes(ws_changes.0, ws_changes.1);
         println!("==================== db after deinit ==================");
         println!("{:?}", &env.db);

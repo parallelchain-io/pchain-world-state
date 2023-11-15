@@ -445,10 +445,8 @@ impl<'a, S: DB + Send + Sync + Clone> AccountsTrie<'a, S, crate::V1> {
         })?;
         // destroy all account field info
         self.trie.batch_remove(&key_set)?;
-        // destroy the account trie
-        self.trie.deinit()?;
-        // get v2 mpt for accounts
-        let mut trie_v2 = self.trie.upgrade();
+        // destroy the account trie and get v2 mpt for accounts
+        let mut trie_v2 = self.trie.deinit_and_upgrade()?;
         // rebuild all accounts(except storage_hash) and storages
         let mut account_info_map: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
         let mut storage_info_map: HashMap<PublicAddress, [u8; 32]> = HashMap::new();

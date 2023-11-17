@@ -7,6 +7,7 @@
 
 use hash_db::{Hasher as KeyHasher, Prefix};
 use pchain_types::cryptography::PublicAddress;
+use reference_trie::RefHasher;
 use std::{marker::PhantomData, mem::size_of};
 
 use crate::accounts_trie::AccountField;
@@ -62,14 +63,24 @@ impl<V: VersionProvider> TrieKey<V> {
     pub(crate) fn storage_key(key: &Vec<u8>) -> Vec<u8> {
         match <V>::version() {
             Version::V1 => {
-                let mut storage_key: Vec<u8> = Vec::with_capacity(size_of::<u8>() + key.len());
+                let mut storage_key: Vec<u8> = Vec::new();
                 storage_key.push(KeyVisibility::Public as u8);
-                storage_key.extend_from_slice(key);
+                if key.len() > 62 {
+                    let hashed_key = RefHasher::hash(key);
+                    storage_key.extend_from_slice(&hashed_key);
+                } else {
+                    storage_key.extend_from_slice(key);
+                }
                 storage_key
             }
             Version::V2 => {
-                let mut storage_key: Vec<u8> = Vec::with_capacity(key.len());
-                storage_key.extend_from_slice(key);
+                let mut storage_key: Vec<u8> = Vec::new();
+                if key.len() > 62 {
+                    let hashed_key = RefHasher::hash(key);
+                    storage_key.extend_from_slice(&hashed_key);
+                } else {
+                    storage_key.extend_from_slice(key);
+                }
                 storage_key
             }
         }

@@ -130,7 +130,7 @@ pub fn upgrade() {
     db.apply_changes(ws_2_changes.inserts, ws_2_changes.deletes);
     let end_time = Instant::now();
     println!(
-        "upgrade cost: {} milliseconds", //179606 milliseconds
+        "upgrade cost: {} milliseconds", //181184 milliseconds
         end_time.duration_since(start_time).as_millis()
     );
 
@@ -143,7 +143,7 @@ pub fn upgrade() {
     }
     let end_time: Instant = Instant::now();
     println!(
-        "Iter cost: {} milliseconds", //1279 milliseconds
+        "Iter cost: {} milliseconds", //1296 milliseconds
         end_time.duration_since(start_time).as_millis()
     )
 }

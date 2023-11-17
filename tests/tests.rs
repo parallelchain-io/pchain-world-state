@@ -323,7 +323,12 @@ pub fn update_cbi_version() {
 #[test]
 pub fn update_storage() {
     //================ Version1 ================
-    let key_apple: Key = b"apple".to_vec();
+    let key_apple: Key = [
+        4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+        2, 2, 2, 3, 4, 5, 6, 7,
+    ]
+    .to_vec();
     let value_apple: Value = b"1234".to_vec();
     let key_banana: Key = b"banana".to_vec();
     let value_banana: Value = b"12345".to_vec();
@@ -394,7 +399,12 @@ pub fn iter() {
     // variables
     let code_str = "Hello world";
     let code_vec = code_str.as_bytes().to_vec();
-    let key_apple: Key = b"apple".to_vec();
+    let key_apple: Key = [
+        4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+        2, 2, 2, 3, 4, 5, 6, 7,
+    ]
+    .to_vec();
     let value_apple: Value = b"1234".to_vec();
     let key_banana: Key = b"banana".to_vec();
     let value_banana: Value = b"12345".to_vec();
@@ -466,16 +476,19 @@ pub fn iter() {
         )
     });
     // iter storage trie
-    let storage_iter = new_ws_v1
+    let storage_trie_ref = new_ws_v1
         .storage_trie(env_1.addresses.get(0).unwrap())
-        .unwrap()
-        .all()
         .unwrap();
-    assert!(storage_iter.clone().contains_key(&key_apple));
-    assert!(storage_iter.clone().contains_key(&key_banana));
-    storage_iter
-        .into_iter()
-        .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
+    assert!(storage_trie_ref.contains(&key_apple).unwrap());
+    assert_eq!(
+        storage_trie_ref.get(&key_apple).unwrap(),
+        Some(value_apple.clone())
+    );
+    assert!(storage_trie_ref.contains(&key_banana).unwrap());
+    assert_eq!(
+        storage_trie_ref.get(&key_banana).unwrap(),
+        Some(value_banana.clone())
+    );
 
     //================ Version2 ================
     // init trie
@@ -544,21 +557,21 @@ pub fn iter() {
         )
     });
     // iter storage trie
-    let storage_iter = new_ws_v2
+    let storage_trie_ref = new_ws_v2
         .storage_trie(env_2.addresses.get(0).unwrap())
-        .unwrap()
-        .all()
         .unwrap();
-    assert!(storage_iter.clone().contains_key(&key_apple));
-    assert!(storage_iter.clone().contains_key(&key_banana));
-    storage_iter
-        .into_iter()
-        .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
+    assert!(storage_trie_ref.contains(&key_apple).unwrap());
+    assert!(storage_trie_ref.contains(&key_banana).unwrap());
 }
 
 #[test]
 pub fn search_with_proof() {
-    let key_apple: Key = b"apple".to_vec();
+    let key_apple: Key = [
+        4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+        2, 2, 2, 3, 4, 5, 6, 7,
+    ]
+    .to_vec();
     let value_apple: Value = b"1234".to_vec();
     let code_str = "Hello world";
     let code_vec = code_str.as_bytes().to_vec();
@@ -743,7 +756,12 @@ pub fn search_with_proof() {
 pub fn upgrade() {
     let code_str = "Hello world";
     let code_vec = code_str.as_bytes().to_vec();
-    let key_apple: Key = b"apple".to_vec();
+    let key_apple: Key = [
+        4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+        2, 2, 2, 3, 4, 5, 6, 7,
+    ]
+    .to_vec();
     let value_apple: Value = b"1234".to_vec();
     let key_banana: Key = b"banana".to_vec();
     let value_banana: Value = b"12345".to_vec();
@@ -801,14 +819,20 @@ pub fn upgrade() {
         .unwrap()
         .into_iter()
         .for_each(|(key, value)| println!("account_address: {:?}, account_info: {:?}", key, value));
-    println!("=======================iter storage trie after insertion==========================");
-    let storage_trie_ref = new_ws_1.storage_trie(&env.addresses.get(0).unwrap());
-    storage_trie_ref
-        .unwrap()
-        .all()
-        .unwrap()
-        .into_iter()
-        .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
+    println!("=======================test storage trie after insertion==========================");
+    let storage_trie_ref = new_ws_1
+        .storage_trie(&env.addresses.get(0).unwrap())
+        .unwrap();
+    assert!(storage_trie_ref.contains(&key_apple).unwrap());
+    assert_eq!(
+        storage_trie_ref.get(&key_apple).unwrap(),
+        Some(value_apple.clone())
+    );
+    assert!(storage_trie_ref.contains(&key_banana).unwrap());
+    assert_eq!(
+        storage_trie_ref.get(&key_banana).unwrap(),
+        Some(value_banana.clone())
+    );
     println!("======================db after insertion =================================");
     println!("{:?}", &env.db);
     // upgrade
@@ -825,20 +849,17 @@ pub fn upgrade() {
         .unwrap()
         .into_iter()
         .for_each(|(key, value)| println!("account_address: {:?}, account_info: {:?}", key, value));
-    println!("=======================iter storage trie after upgrade==========================");
+    println!("=======================test storage trie after upgrade==========================");
     let storage_trie_ref = ws_2.storage_trie(&env.addresses.get(0).unwrap()).unwrap();
-    storage_trie_ref
-        .clone()
-        .all()
-        .unwrap()
-        .into_iter()
-        .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
     assert!(storage_trie_ref.contains(&key_apple).unwrap());
-    assert_eq!(storage_trie_ref.get(&key_apple).unwrap(), Some(value_apple));
+    assert_eq!(
+        storage_trie_ref.get(&key_apple).unwrap(),
+        Some(value_apple.clone())
+    );
     assert!(storage_trie_ref.contains(&key_banana).unwrap());
     assert_eq!(
         storage_trie_ref.get(&key_banana).unwrap(),
-        Some(value_banana)
+        Some(value_banana.clone())
     );
     println!("======================db after upgrade =================================");
     println!("{:?}", &env.db);
@@ -879,13 +900,17 @@ pub fn remove_storage_info() {
         .into_iter()
         .for_each(|(key, value)| println!("account_address: {:?}, account_info: {:?}", key, value));
     println!("======Account Storage <Key, value>=======");
-    new_ws_v1
-        .storage_trie(&env_1.address)
-        .unwrap()
-        .all()
-        .unwrap()
-        .into_iter()
-        .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
+    let storage_trie_ref = new_ws_v1.storage_trie(&env_1.address).unwrap();
+    assert!(storage_trie_ref.contains(&key_apple).unwrap());
+    assert_eq!(
+        storage_trie_ref.get(&key_apple).unwrap(),
+        Some(value_apple.clone())
+    );
+    assert!(storage_trie_ref.contains(&key_banana).unwrap());
+    assert_eq!(
+        storage_trie_ref.get(&key_banana).unwrap(),
+        Some(value_banana.clone())
+    );
     // remove storage
     new_ws_v1
         .storage_trie_mut(&env_1.address)
@@ -907,14 +932,9 @@ pub fn remove_storage_info() {
         .into_iter()
         .for_each(|(key, value)| println!("account_address: {:?}, account_info: {:?}", key, value));
     println!("======Account Storage <Key, value>=======");
-    ws_after_delete_v1
-        .storage_trie(&env_1.address)
-        .unwrap()
-        .all()
-        .unwrap()
-        .into_iter()
-        .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
-
+    let storage_trie_ref = ws_after_delete_v1.storage_trie(&env_1.address).unwrap();
+    assert!(!storage_trie_ref.contains(&key_apple).unwrap());
+    assert!(!storage_trie_ref.contains(&key_banana).unwrap());
     //================ Version2 ================
     // init trie
     let mut env_2 = TestEnv::default();
@@ -941,14 +961,15 @@ pub fn remove_storage_info() {
         .unwrap()
         .into_iter()
         .for_each(|(key, value)| println!("account_address: {:?}, account_info: {:?}", key, value));
-    println!("======Account Storage <Key, value>=======");
-    new_ws_v2
-        .storage_trie(&env_2.address)
-        .unwrap()
-        .all()
-        .unwrap()
-        .into_iter()
-        .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
+    println!("======Account Storage <Key, value> test=======");
+    let storage_trie_ref = new_ws_v2.storage_trie(&env_2.address).unwrap();
+    assert!(storage_trie_ref.contains(&key_apple).unwrap());
+    assert_eq!(storage_trie_ref.get(&key_apple).unwrap(), Some(value_apple));
+    assert!(storage_trie_ref.contains(&key_banana).unwrap());
+    assert_eq!(
+        storage_trie_ref.get(&key_banana).unwrap(),
+        Some(value_banana)
+    );
     // remove storage
     new_ws_v2
         .storage_trie_mut(&env_2.address)
@@ -969,14 +990,10 @@ pub fn remove_storage_info() {
         .unwrap()
         .into_iter()
         .for_each(|(key, value)| println!("account_address: {:?}, account_info: {:?}", key, value));
-    println!("======Account Storage <Key, value>=======");
-    ws_after_delete_v2
-        .storage_trie(&env_1.address)
-        .unwrap()
-        .all()
-        .unwrap()
-        .into_iter()
-        .for_each(|(key, value)| println!("key: {:?}, value: {:?}", key, value));
+    println!("======Account Storage <Key, value> test=======");
+    let storage_trie_ref = ws_after_delete_v2.storage_trie(&env_1.address).unwrap();
+    assert!(!storage_trie_ref.contains(&key_apple).unwrap());
+    assert!(!storage_trie_ref.contains(&key_banana).unwrap());
 }
 
 /// The following tests are for network functions
@@ -1048,7 +1065,7 @@ where
 #[test]
 fn test_network_account() {
     let env = TestEnv::default();
-    let mut ws = StorageWorldState::<DummyStorage, V1>::initialize(&env.db);
+    let mut ws = StorageWorldState::<DummyStorage, V2>::initialize(&env.db);
 
     // No values are set at initialization
     assert_eq!(NetworkAccount::new(&mut ws).current_epoch(), 0);
@@ -1099,7 +1116,7 @@ fn test_network_account() {
     assert!(deposit.balance().is_none());
     assert!(deposit.auto_stake_rewards().is_none());
 
-    deposit.set_balance(987);
+    deposit.set_balance(987_u64);
     deposit.set_auto_stake_rewards(true);
 
     assert_eq!(deposit.balance().unwrap(), 987);

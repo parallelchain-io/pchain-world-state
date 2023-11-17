@@ -62,24 +62,6 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         })
     }
 
-    /// `all` is to iterator all <Key, Value> in current StorageTrie
-    ///
-    /// Return a HashMap of (`Vec<u8>`, `Vec<u8>`)
-    ///
-    /// Error if storage_hash does not exists or missed some trie nodes
-    pub fn all(&self) -> Result<HashMap<Vec<u8>, Vec<u8>>, WorldStateError> {
-        let mut ret_map: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
-
-        self.trie.iterate_all(|key, value| {
-            let storage_key = TrieKey::<V>::drop_visibility_type(&key)?;
-            ret_map.insert(storage_key, value);
-
-            Ok::<(), WorldStateError>(())
-        })?;
-
-        Ok(ret_map)
-    }
-
     /// `contains` is to check if the key exists in current StorageTrie or not
     ///
     /// Error if storage_hash does not exists or missed some trie nodes

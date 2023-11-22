@@ -63,23 +63,19 @@ impl<V: VersionProvider> TrieKey<V> {
     pub(crate) fn storage_key(key: &Vec<u8>) -> Vec<u8> {
         match <V>::version() {
             Version::V1 => {
-                let mut storage_key: Vec<u8> = Vec::new();
+                let mut storage_key: Vec<u8> = Vec::with_capacity(size_of::<u8>() + key.len());
                 storage_key.push(KeyVisibility::Public as u8);
-                if key.len() > 62 {
-                    let hashed_key = RefHasher::hash(key);
-                    storage_key.extend_from_slice(&hashed_key);
-                } else {
-                    storage_key.extend_from_slice(key);
-                }
+                storage_key.extend_from_slice(key);
                 storage_key
             }
             Version::V2 => {
                 let mut storage_key: Vec<u8> = Vec::new();
-                if key.len() > 62 {
+                // Here `RefHasher` must be using the Keccak256 hash function.
+                if key.len() < RefHasher::LENGTH { // 32 bytes
+                    storage_key.extend_from_slice(key);
+                } else {
                     let hashed_key = RefHasher::hash(key);
                     storage_key.extend_from_slice(&hashed_key);
-                } else {
-                    storage_key.extend_from_slice(key);
                 }
                 storage_key
             }

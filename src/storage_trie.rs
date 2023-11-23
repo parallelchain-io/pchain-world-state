@@ -6,19 +6,18 @@
 //! This mod provide struct and implementations for account storage
 
 use std::collections::{HashMap, HashSet};
+use std::mem::size_of;
 
 use crate::error::{MptError, WorldStateError};
-use crate::mpt::{Mpt, Proof};
+use crate::mpt::{proof_level, KeyVisibility, Mpt, Proof, WSProofNode};
 use crate::world_state::WorldStateChanges;
+use crate::TrieKeyBuildError;
 use crate::{
     db::{KeyInstrumentedDB, DB},
     version::*,
 };
 use hash_db::Hasher;
 use pchain_types::cryptography::{PublicAddress, Sha256Hash};
-
-use crate::proof_node::{proof_level, WSProofNode};
-use crate::trie_key::TrieKey;
 use reference_trie::RefHasher;
 
 const NULL_NODE_KEY: &[u8] = &[0_u8];
@@ -42,7 +41,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     ///
     /// Error if storage_hash does not exists or missed some trie nodes
     pub fn get(&self, key: &Vec<u8>) -> Result<Option<Vec<u8>>, MptError> {
-        let trie_key: Vec<u8> = TrieKey::<V>::storage_key(key);
+        let trie_key: Vec<u8> = storage_key::<V>(key);
         self.trie.get(&trie_key)
     }
 
@@ -52,7 +51,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     ///
     /// Error if storage_hash does not exists or missed some trie nodes
     pub fn get_with_proof(&self, key: &Vec<u8>) -> Result<(Proof, Option<Vec<u8>>), MptError> {
-        let trie_key: Vec<u8> = TrieKey::<V>::storage_key(key);
+        let trie_key: Vec<u8> = storage_key::<V>(key);
         self.trie.get_with_proof(&trie_key).map(|(proof, value)| {
             let proof = proof
                 .into_iter()
@@ -66,19 +65,19 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     ///
     /// Error if storage_hash does not exists or missed some trie nodes
     pub fn contains(&self, key: &Vec<u8>) -> Result<bool, MptError> {
-        let storage_key: Vec<u8> = TrieKey::<V>::storage_key(key);
+        let storage_key: Vec<u8> = storage_key::<V>(key);
         self.trie.contains(&storage_key)
     }
 
     /// `set` is to set/update <Key, Value> pair in StorageTrie
     pub fn set(&mut self, key: &Vec<u8>, value: Vec<u8>) -> Result<(), MptError> {
-        let storage_key: Vec<u8> = TrieKey::<V>::storage_key(key);
+        let storage_key: Vec<u8> = storage_key::<V>(key);
         self.trie.set(&storage_key, value)
     }
 
     /// `remove` is to remove key in StorageTrie
     pub fn remove(&mut self, key: &Vec<u8>) -> Result<(), MptError> {
-        let storage_key: Vec<u8> = TrieKey::<V>::storage_key(key);
+        let storage_key: Vec<u8> = storage_key::<V>(key);
         self.trie.remove(&storage_key)
     }
 
@@ -97,7 +96,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     pub fn batch_set(&mut self, data: &HashMap<Vec<u8>, Vec<u8>>) -> Result<(), MptError> {
         let mut storage_data_set = HashMap::new();
         for (key, value) in data.iter() {
-            let storage_key: Vec<u8> = TrieKey::<V>::storage_key(key);
+            let storage_key: Vec<u8> = storage_key::<V>(key);
             storage_data_set.insert(storage_key, value.clone());
         }
         self.trie.batch_set(&storage_data_set)
@@ -150,8 +149,8 @@ impl<'a, S: DB + Send + Sync + Clone> StorageTrie<'a, S, V1> {
         let mut key_set: HashSet<Vec<u8>> = HashSet::new();
         self.trie.iterate_all(|key, value| {
             key_set.insert(key.clone());
-            let storage_key_v1 = TrieKey::<V1>::drop_visibility_type(&key)?;
-            let storage_key_v2 = TrieKey::<V2>::storage_key(&storage_key_v1);
+            let storage_key_v1 = drop_visibility_type::<V1>(&key)?;
+            let storage_key_v2 = storage_key::<V2>(&storage_key_v1);
             data_map.insert(storage_key_v2, value);
             Ok::<(), WorldStateError>(())
         })?;
@@ -162,5 +161,46 @@ impl<'a, S: DB + Send + Sync + Clone> StorageTrie<'a, S, V1> {
         // batch insert all data into the new mpt
         trie_v2.batch_set(&data_map)?;
         Ok(StorageTrie { trie: trie_v2 })
+    }
+}
+
+/// `storage_key` is to crate the key for [StorageTrie](crate::storage::StorageTrie)
+///
+/// V1 StorageTrie Key is in form KeyVisibility + Vec<u8>
+///
+/// V2 StorageTrie Key is in form Vec<u8>
+pub(crate) fn storage_key<V: VersionProvider>(key: &Vec<u8>) -> Vec<u8> {
+    match <V>::version() {
+        Version::V1 => {
+            let mut storage_key: Vec<u8> = Vec::with_capacity(size_of::<u8>() + key.len());
+            storage_key.push(KeyVisibility::Public as u8);
+            storage_key.extend_from_slice(key);
+            storage_key
+        }
+        Version::V2 => {
+            let mut storage_key: Vec<u8> = Vec::new();
+            // Here `RefHasher` must be using the Keccak256 hash function.
+            if key.len() < RefHasher::LENGTH {
+                // 32 bytes
+                storage_key.extend_from_slice(key);
+            } else {
+                let hashed_key = RefHasher::hash(key);
+                storage_key.extend_from_slice(&hashed_key);
+            }
+            storage_key
+        }
+    }
+}
+
+/// `drop_visibility_type` is to drop the visibility byte from [AccountsTrie](crate::accounts_trie::AccountsTrie) Key or [StorageTrie](crate::storage_trie::StorageTrie) Key
+pub(crate) fn drop_visibility_type<V: VersionProvider>(
+    key: &[u8],
+) -> Result<Vec<u8>, TrieKeyBuildError> {
+    if key.len() < size_of::<u8>() {
+        return Err(TrieKeyBuildError::Other);
+    }
+    match <V>::version() {
+        Version::V1 => Ok(key[size_of::<u8>()..].to_vec()),
+        Version::V2 => Ok(key.to_vec()),
     }
 }

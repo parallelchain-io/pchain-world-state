@@ -8,18 +8,19 @@
 //! [Account] store external account information in blockchain.
 //! [AccountField] prefix to identify the data type.
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    mem::size_of,
+};
 
 use pchain_types::cryptography::{PublicAddress, Sha256Hash};
 
 use crate::{
     db::{KeyInstrumentedDB, DB},
     error::{DecodeOrEncodeError, MptError, TrieKeyBuildError, WorldStateError},
-    mpt::{Mpt, Proof},
-    proof_node::{proof_level, WSProofNode},
-    trie_key::TrieKey,
+    mpt::{proof_level, KeyVisibility, Mpt, Proof, WSProofNode},
     world_state::WorldStateChanges,
-    VersionProvider, V1, V2,
+    Version, VersionProvider, V1, V2,
 };
 
 /// Struct store external account information in blockchain
@@ -89,7 +90,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     ///
     /// Error if state_hash does not exist or missed some trie nodes
     pub fn nonce(&self, address: &PublicAddress) -> Result<u64, MptError> {
-        let nonce_key = TrieKey::<V>::account_key(address, AccountField::Nonce);
+        let nonce_key = account_key::<V>(address, AccountField::Nonce);
         self.trie
             .get(&nonce_key)
             .map(|value| value.map_or(0, |value| u64::from_le_bytes(value.try_into().unwrap())))
@@ -101,7 +102,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     ///
     /// Error if state_hash does not exist or missed some trie nodes
     pub fn nonce_with_proof(&self, address: &PublicAddress) -> Result<(Proof, u64), MptError> {
-        let nonce_key = TrieKey::<V>::account_key(address, AccountField::Nonce);
+        let nonce_key = account_key::<V>(address, AccountField::Nonce);
         self.get_with_proof_from_trie_key(&nonce_key)
             .map(|(proof, value)| {
                 let value = value.map_or(0, |value| u64::from_le_bytes(value.try_into().unwrap()));
@@ -115,7 +116,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     ///
     /// Error if state_hash does not exist or missed some trie nodes
     pub fn balance(&self, address: &PublicAddress) -> Result<u64, MptError> {
-        let balance_key = TrieKey::<V>::account_key(address, AccountField::Balance);
+        let balance_key = account_key::<V>(address, AccountField::Balance);
         self.trie
             .get(&balance_key)
             .map(|value| value.map_or(0, |value| u64::from_le_bytes(value.try_into().unwrap())))
@@ -127,7 +128,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     ///
     /// Error if state_hash does not exist or missed some trie nodes
     pub fn balance_with_proof(&self, address: &PublicAddress) -> Result<(Proof, u64), MptError> {
-        let balance_key: Vec<u8> = TrieKey::<V>::account_key(address, AccountField::Balance);
+        let balance_key: Vec<u8> = account_key::<V>(address, AccountField::Balance);
         self.get_with_proof_from_trie_key(&balance_key)
             .map(|(proof, value)| {
                 let value = value.map_or(0, |value| u64::from_le_bytes(value.try_into().unwrap()));
@@ -141,7 +142,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     ///
     /// Error if state_hash does not exist or missed some trie nodes
     pub fn code(&self, address: &PublicAddress) -> Result<Option<Vec<u8>>, MptError> {
-        let code_key: Vec<u8> = TrieKey::<V>::account_key(address, AccountField::ContractCode);
+        let code_key: Vec<u8> = account_key::<V>(address, AccountField::ContractCode);
         self.trie.get(&code_key)
     }
 
@@ -154,7 +155,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         &self,
         address: &PublicAddress,
     ) -> Result<(Proof, Option<Vec<u8>>), MptError> {
-        let code_key: Vec<u8> = TrieKey::<V>::account_key(address, AccountField::ContractCode);
+        let code_key: Vec<u8> = account_key::<V>(address, AccountField::ContractCode);
         self.get_with_proof_from_trie_key(&code_key)
     }
 
@@ -164,7 +165,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     ///
     /// Error if state_hash does not exist or missed some trie nodes
     pub fn cbi_version(&self, address: &PublicAddress) -> Result<Option<u32>, MptError> {
-        let cbi_version_key: Vec<u8> = TrieKey::<V>::account_key(address, AccountField::CbiVersion);
+        let cbi_version_key: Vec<u8> = account_key::<V>(address, AccountField::CbiVersion);
         self.trie
             .get(&cbi_version_key)
             .map(|value| value.map(|value| u32::from_le_bytes(value.try_into().unwrap())))
@@ -179,7 +180,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         &self,
         address: &PublicAddress,
     ) -> Result<(Proof, Option<u32>), MptError> {
-        let cbi_version_key: Vec<u8> = TrieKey::<V>::account_key(address, AccountField::CbiVersion);
+        let cbi_version_key: Vec<u8> = account_key::<V>(address, AccountField::CbiVersion);
         self.get_with_proof_from_trie_key(&cbi_version_key)
             .map(|(proof, value)| {
                 let value = value.map(|value| u32::from_le_bytes(value.try_into().unwrap()));
@@ -193,7 +194,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     ///
     /// Error if state_hash does not exist or missed some trie nodes
     pub fn storage_hash(&self, address: &PublicAddress) -> Result<Option<Sha256Hash>, MptError> {
-        let storage_hash_key = TrieKey::<V>::account_key(address, AccountField::StorageHash);
+        let storage_hash_key = account_key::<V>(address, AccountField::StorageHash);
         self.trie
             .get(&storage_hash_key)
             .map(|value| value.map(|hash_value| hash_value.try_into().unwrap()))
@@ -208,7 +209,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         &self,
         address: &PublicAddress,
     ) -> Result<(Proof, Option<Sha256Hash>), MptError> {
-        let storage_hash_key = TrieKey::<V>::account_key(address, AccountField::StorageHash);
+        let storage_hash_key = account_key::<V>(address, AccountField::StorageHash);
         self.get_with_proof_from_trie_key(&storage_hash_key)
             .map(|(proof, value)| {
                 let value = value.map(|hash_value| hash_value.try_into().unwrap());
@@ -226,9 +227,9 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
 
         self.trie.iterate_all(|key, value| {
             // Get the account address and the field from the key
-            let account_address = TrieKey::<V>::account_address(&key)?;
+            let account_address = account_address(&key)?;
 
-            let account_field = TrieKey::<V>::account_field(&key)?;
+            let account_field = account_field::<V>(&key)?;
 
             // Get mutable reference to the account from the account map.
             let account_value = match ret_map.get_mut(&account_address) {
@@ -271,7 +272,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     ///
     /// Error when state_hash does not exist or missed some trie nodes
     pub fn contains_nonce(&self, address: &PublicAddress) -> Result<bool, MptError> {
-        let key = TrieKey::<V>::account_key(address, AccountField::Nonce);
+        let key = account_key::<V>(address, AccountField::Nonce);
         self.trie.contains(&key)
     }
 
@@ -279,7 +280,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     ///
     /// Error when state_hash does not exist or missed some trie nodes
     pub fn contains_balance(&self, address: &PublicAddress) -> Result<bool, MptError> {
-        let key = TrieKey::<V>::account_key(address, AccountField::Balance);
+        let key = account_key::<V>(address, AccountField::Balance);
         self.trie.contains(&key)
     }
 
@@ -287,7 +288,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     ///
     /// Error when state_hash does not exist or missed some trie nodes
     pub fn contains_code(&self, address: &PublicAddress) -> Result<bool, MptError> {
-        let key = TrieKey::<V>::account_key(address, AccountField::ContractCode);
+        let key = account_key::<V>(address, AccountField::ContractCode);
         self.trie.contains(&key)
     }
 
@@ -295,7 +296,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     ///
     /// Error when state_hash does not exist or missed some trie nodes
     pub fn contains_cbi_version(&self, address: &PublicAddress) -> Result<bool, MptError> {
-        let key = TrieKey::<V>::account_key(address, AccountField::CbiVersion);
+        let key = account_key::<V>(address, AccountField::CbiVersion);
         self.trie.contains(&key)
     }
 
@@ -303,27 +304,27 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     ///
     /// Error when state_hash does not exist or missed some trie nodes
     pub fn contains_storage_hash(&self, address: &PublicAddress) -> Result<bool, MptError> {
-        let key = TrieKey::<V>::account_key(address, AccountField::StorageHash);
+        let key = account_key::<V>(address, AccountField::StorageHash);
         self.trie.contains(&key)
     }
 
     /// `set_nonce` is to set/update account nonce
     pub fn set_nonce(&mut self, address: &PublicAddress, nonce: u64) -> Result<(), MptError> {
-        let nonce_key = TrieKey::<V>::account_key(address, AccountField::Nonce);
+        let nonce_key = account_key::<V>(address, AccountField::Nonce);
         let value = nonce.to_le_bytes().to_vec();
         self.trie.set(&nonce_key, value)
     }
 
     /// `set_balance` is to set/update account balance
     pub fn set_balance(&mut self, address: &PublicAddress, balance: u64) -> Result<(), MptError> {
-        let balance_key = TrieKey::<V>::account_key(address, AccountField::Balance);
+        let balance_key = account_key::<V>(address, AccountField::Balance);
         let value = balance.to_le_bytes().to_vec();
         self.trie.set(&balance_key, value)
     }
 
     /// `set_code` is to set contract code of contract account
     pub fn set_code(&mut self, address: &PublicAddress, code: Vec<u8>) -> Result<(), MptError> {
-        let code_key = TrieKey::<V>::account_key(address, AccountField::ContractCode);
+        let code_key = account_key::<V>(address, AccountField::ContractCode);
         self.trie.set(&code_key, code)
     }
 
@@ -333,7 +334,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         address: &PublicAddress,
         cbi_version: u32,
     ) -> Result<(), MptError> {
-        let cbi_version_key = TrieKey::<V>::account_key(address, AccountField::CbiVersion);
+        let cbi_version_key = account_key::<V>(address, AccountField::CbiVersion);
         let value = cbi_version.to_le_bytes().to_vec();
         self.trie.set(&cbi_version_key, value)
     }
@@ -382,8 +383,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         address: &PublicAddress,
         storage_hash: Sha256Hash,
     ) -> Result<(), MptError> {
-        let storage_hash_key: Vec<u8> =
-            TrieKey::<V>::account_key(address, AccountField::StorageHash);
+        let storage_hash_key: Vec<u8> = account_key::<V>(address, AccountField::StorageHash);
         let value = storage_hash.to_vec();
         self.trie.set(&storage_hash_key, value)
     }
@@ -408,8 +408,8 @@ impl<'a, S: DB + Send + Sync + Clone> AccountsTrie<'a, S, crate::V1> {
         let mut key_set: HashSet<Vec<u8>> = HashSet::new();
         self.trie.iterate_all(|key, value| {
             key_set.insert(key.clone());
-            let account_address = TrieKey::<V1>::account_address(&key)?;
-            let account_field: AccountField = TrieKey::<V1>::account_field(&key)?;
+            let account_address = account_address(&key)?;
+            let account_field: AccountField = account_field::<V1>(&key)?;
             let account = match data_map.get_mut(&account_address) {
                 Some(account) => account,
                 None => {
@@ -452,22 +452,21 @@ impl<'a, S: DB + Send + Sync + Clone> AccountsTrie<'a, S, crate::V1> {
         let mut storage_info_map: HashMap<PublicAddress, [u8; 32]> = HashMap::new();
         for (address, account) in data_map {
             if account.nonce != 0_u64 {
-                let nonce_key = TrieKey::<V2>::account_key(&address, AccountField::Nonce);
+                let nonce_key = account_key::<V2>(&address, AccountField::Nonce);
                 let value = account.nonce.to_le_bytes().to_vec();
                 account_info_map.insert(nonce_key, value);
             }
             if account.balance != 0_u64 {
-                let balance_key = TrieKey::<V2>::account_key(&address, AccountField::Balance);
+                let balance_key = account_key::<V2>(&address, AccountField::Balance);
                 let value = account.balance.to_le_bytes().to_vec();
                 account_info_map.insert(balance_key, value);
             }
             if !account.code.is_empty() {
-                let code_key = TrieKey::<V2>::account_key(&address, AccountField::ContractCode);
+                let code_key = account_key::<V2>(&address, AccountField::ContractCode);
                 account_info_map.insert(code_key, account.code.clone());
             }
             if account.cbi_version.is_some() {
-                let cbi_version_key =
-                    TrieKey::<V2>::account_key(&address, AccountField::CbiVersion);
+                let cbi_version_key = account_key::<V2>(&address, AccountField::CbiVersion);
                 let value = account.cbi_version.unwrap().to_le_bytes().to_vec();
                 account_info_map.insert(cbi_version_key, value);
             }
@@ -479,4 +478,59 @@ impl<'a, S: DB + Send + Sync + Clone> AccountsTrie<'a, S, crate::V1> {
         trie_v2.batch_set(&account_info_map)?;
         Ok((AccountsTrie { trie: trie_v2 }, storage_info_map))
     }
+}
+
+/// `account_key` is to create the key for [AccountsTrie](crate::accounts_trie::AccountsTrie)
+///
+/// V1 AccountTrie Key is in form PublicAddress + KeyVisibility + AccountField
+///
+/// V2 AccountTrie Key is in form PublicAddress + AccountField
+pub(crate) fn account_key<V: VersionProvider>(
+    address: &PublicAddress,
+    account_field: AccountField,
+) -> Vec<u8> {
+    match <V>::version() {
+        Version::V1 => {
+            let mut account_key: Vec<u8> =
+                Vec::with_capacity(size_of::<PublicAddress>() + size_of::<u8>() + size_of::<u8>());
+            account_key.extend_from_slice(address);
+            account_key.push(KeyVisibility::Protected as u8);
+            account_key.push(account_field as u8);
+            account_key
+        }
+        Version::V2 => {
+            let mut account_key: Vec<u8> =
+                Vec::with_capacity(size_of::<PublicAddress>() + size_of::<u8>());
+            account_key.extend_from_slice(address);
+            account_key.push(account_field as u8);
+            account_key
+        }
+    }
+}
+
+/// `account_field` is to seperate the AccountField from [AccountsTrie](crate::accounts_trie::AccountsTrie) Key
+pub(crate) fn account_field<V: VersionProvider>(
+    key: &[u8],
+) -> Result<AccountField, TrieKeyBuildError> {
+    let account_field_byte_index = match <V>::version() {
+        Version::V1 => size_of::<PublicAddress>() + size_of::<u8>(),
+        Version::V2 => size_of::<PublicAddress>(),
+    };
+
+    if key.len() <= account_field_byte_index {
+        return Err(TrieKeyBuildError::InvalidAccountField);
+    }
+
+    AccountField::try_from(key[account_field_byte_index])
+}
+
+/// `account_address` is to seperate the account address from [AccountsTrie](crate::accounts_trie::AccountsTrie) Key
+pub(crate) fn account_address(key: &[u8]) -> Result<PublicAddress, TrieKeyBuildError> {
+    if key.len() < size_of::<PublicAddress>() {
+        return Err(TrieKeyBuildError::InvalidPublicAddress);
+    }
+
+    key[..size_of::<PublicAddress>()]
+        .try_into()
+        .map_err(|_| TrieKeyBuildError::InvalidPublicAddress)
 }

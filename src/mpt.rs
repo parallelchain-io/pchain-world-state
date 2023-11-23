@@ -7,7 +7,6 @@
 
 use crate::db::{KeyInstrumentedDB, DB};
 use crate::error::MptError;
-use crate::trie_key::PrefixedTrieNodeKey;
 use crate::version::{Version, VersionProvider};
 use hash_db::{AsHashDB, HashDB, HashDBRef, Hasher as KeyHasher, Prefix};
 use pchain_types::cryptography::Sha256Hash;
@@ -41,21 +40,21 @@ where
     S: DB + Send + Sync + Clone,
     V: VersionProvider + Send + Sync + Clone,
 {
-    storage: KeyInstrumentedDB<'a, S, V>,
+    db: KeyInstrumentedDB<'a, S, V>,
     root_hash: Sha256Hash,
 }
 
 impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> Mpt<'a, S, V> {
     /// `new` is to create a new Trie with empty state_hash
     /// This function should be called only once, during the first startup of fullnode
-    pub(crate) fn new(mut storage: KeyInstrumentedDB<'a, S, V>) -> Self {
+    pub(crate) fn new(mut db: KeyInstrumentedDB<'a, S, V>) -> Self {
         // build an empty MPT for genesis world state
         let mut default_root_hash = Default::default();
         let key: Vec<u8> = RefHasher::hash(NULL_NODE_KEY).to_vec();
         let value: Vec<u8> = NULL_NODE_VALUE.to_vec();
-        storage.put(key, value);
+        db.put(key, value);
         let mut genesis_mpt: Mpt<S, V> = Mpt {
-            storage: storage.clone(),
+            db: db.clone(),
             root_hash: default_root_hash,
         };
         let root_hash = match <V>::version() {
@@ -79,12 +78,12 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
                 *trie.root()
             }
         };
-        Mpt { storage, root_hash }
+        Mpt { db, root_hash }
     }
 
     /// `open` is to open the trie from give storage source and state_hash
-    pub(crate) fn open(storage: KeyInstrumentedDB<'a, S, V>, root_hash: Sha256Hash) -> Self {
-        let mpt: Mpt<S, V> = Mpt { storage, root_hash };
+    pub(crate) fn open(db: KeyInstrumentedDB<'a, S, V>, root_hash: Sha256Hash) -> Self {
+        let mpt: Mpt<S, V> = Mpt { db, root_hash };
         mpt
     }
 
@@ -355,7 +354,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
 
     /// `close` is return and flush cache changes in [DB](crate::db::DB). Also return the updated state_hash
     pub(crate) fn close(&mut self) -> MptChanges {
-        let db_changes = self.storage.close();
+        let db_changes = self.db.close();
         MptChanges(db_changes.0, db_changes.1, self.root_hash)
     }
 }
@@ -371,19 +370,19 @@ impl<'a, S: DB + Send + Sync + Clone> Mpt<'a, S, crate::V1> {
         let trie = TrieDBBuilder::<NoExtensionLayout>::new(&self, &self.root_hash).build();
         if trie.iter().is_ok() {
             // need to hard delete the root node
-            self.storage.delete(empty_root_hash);
+            self.db.delete(empty_root_hash);
         }
         // else the root hash has already been deleted
 
         // upgrade
-        let mut new_storage: KeyInstrumentedDB<'a, S, crate::V2> = self.storage.upgrade();
+        let mut new_storage: KeyInstrumentedDB<'a, S, crate::V2> = self.db.upgrade();
         // compute root_hash for a empty trie in V2
         let mut default_root_hash = Default::default();
         let key: Vec<u8> = RefHasher::hash(NULL_NODE_KEY).to_vec();
         let value: Vec<u8> = NULL_NODE_VALUE.to_vec();
         new_storage.put(key, value);
         let mut genesis_mpt: Mpt<S, crate::V2> = Mpt {
-            storage: new_storage.clone(),
+            db: new_storage.clone(),
             root_hash: default_root_hash,
         };
         let new_root_hash = {
@@ -394,7 +393,7 @@ impl<'a, S: DB + Send + Sync + Clone> Mpt<'a, S, crate::V1> {
             *trie.root()
         };
         Ok(Mpt {
-            storage: new_storage,
+            db: new_storage,
             root_hash: new_root_hash,
         })
     }
@@ -409,38 +408,51 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     HashDB<RefHasher, Vec<u8>> for Mpt<'a, S, V>
 {
     /// Look up a given hash into the bytes that hash to it, returning None if the hash is not known.
-    fn get(&self, key: &Hash256, mpt_prefix: Prefix) -> Option<Vec<u8>> {
-        let key = PrefixedTrieNodeKey::<RefHasher>::key(key, mpt_prefix);
-        self.storage.get(&key)
+    fn get(&self, key: &Hash256, nibble_prefix: Prefix) -> Option<Vec<u8>> {
+        let key = prefixed_trie_node_key::<RefHasher>(key, nibble_prefix);
+        self.db.get(&key)
     }
 
     /// Check for the existence of a hash-key.
-    fn contains(&self, key: &Hash256, mpt_prefix: Prefix) -> bool {
-        let key = PrefixedTrieNodeKey::<RefHasher>::key(key, mpt_prefix);
-        self.storage.get(key.as_ref()).is_some()
+    fn contains(&self, key: &Hash256, nibble_prefix: Prefix) -> bool {
+        let key = prefixed_trie_node_key::<RefHasher>(key, nibble_prefix);
+        self.db.get(key.as_ref()).is_some()
     }
 
     /// Insert item into the DB and return the hash for a later lookup.
-    fn insert(&mut self, mpt_prefix: Prefix, value: &[u8]) -> Hash256 {
+    fn insert(&mut self, nibble_prefix: Prefix, value: &[u8]) -> Hash256 {
         let key = RefHasher::hash(value);
-        self.emplace(key, mpt_prefix, value.to_vec());
+        self.emplace(key, nibble_prefix, value.to_vec());
         key
     }
 
     /// Like insert(), except you provide the key and the data is all moved.
-    fn emplace(&mut self, key: Hash256, mpt_prefix: Prefix, value: Vec<u8>) {
-        let key = PrefixedTrieNodeKey::<RefHasher>::key(&key, mpt_prefix);
-        self.storage.put(key, value);
+    fn emplace(&mut self, key: Hash256, nibble_prefix: Prefix, value: Vec<u8>) {
+        let key = prefixed_trie_node_key::<RefHasher>(&key, nibble_prefix);
+        self.db.put(key, value);
     }
 
     /// Remove an item previously inserted.
-    fn remove(&mut self, key: &Hash256, mpt_prefix: Prefix) {
+    fn remove(&mut self, key: &Hash256, nibble_prefix: Prefix) {
         if key[..] == RefHasher::hash(NULL_NODE_KEY) {
             return;
         }
-        let key = PrefixedTrieNodeKey::<RefHasher>::key(key, mpt_prefix);
-        self.storage.delete(key);
+        let key = prefixed_trie_node_key::<RefHasher>(key, nibble_prefix);
+        self.db.delete(key);
     }
+}
+
+pub(crate) fn prefixed_trie_node_key<H: KeyHasher>(
+    hash: &H::Out,
+    nibble_prefix: Prefix,
+) -> Vec<u8> {
+    let mut prefixed_key = Vec::with_capacity(hash.as_ref().len() + nibble_prefix.0.len() + 1);
+    prefixed_key.extend_from_slice(nibble_prefix.0);
+    if let Some(last) = nibble_prefix.1 {
+        prefixed_key.push(last);
+    }
+    prefixed_key.extend_from_slice(hash.as_ref());
+    prefixed_key
 }
 
 /// Implemented to meet a requirement of Parity's Base-16 Modified Merkle Tree ("Trie").
@@ -468,20 +480,65 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
 impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
     HashDBRef<RefHasher, Vec<u8>> for Mpt<'a, S, V>
 {
-    fn get(&self, key: &Hash256, mpt_prefix: Prefix) -> Option<Vec<u8>> {
-        HashDB::get(self, key, mpt_prefix)
+    fn get(&self, key: &Hash256, nibble_prefix: Prefix) -> Option<Vec<u8>> {
+        HashDB::get(self, key, nibble_prefix)
     }
 
-    fn contains(&self, key: &Hash256, mpt_prefix: Prefix) -> bool {
-        HashDB::contains(self, key, mpt_prefix)
+    fn contains(&self, key: &Hash256, nibble_prefix: Prefix) -> bool {
+        HashDB::contains(self, key, nibble_prefix)
     }
+}
+
+pub(crate) use proof_level::ProofLevel;
+use std::mem::size_of;
+
+/// WSProofNode is node in the trie traversed while performing lookups on the Key, prefixed by the trie level that they belong to:
+/// `${proof_level}/${trie_node_key}`
+pub(crate) struct WSProofNode(Vec<u8>);
+
+impl WSProofNode {
+    pub(crate) fn new(proof_level: ProofLevel, node_key: Vec<u8>) -> WSProofNode {
+        let mut key: Vec<u8> = Vec::with_capacity(node_key.len() + size_of::<u8>());
+        key.push(proof_level);
+        key.extend_from_slice(&node_key);
+        WSProofNode(key)
+    }
+}
+
+impl From<WSProofNode> for Vec<u8> {
+    fn from(proof_node: WSProofNode) -> Self {
+        proof_node.0
+    }
+}
+
+/// This sub mod provides prefix for proof node.
+pub(crate) mod proof_level {
+    /// ProofLevel forms part of a proof node prefix. It splits the Proof of key into two:
+    ///
+    /// Accounts level
+    ///
+    /// Storage level
+    pub(crate) type ProofLevel = u8;
+
+    /// `ACCOUNTS` is the proof of the storage hash in AccountsTrie
+    pub(crate) const ACCOUNTS: ProofLevel = 0x00;
+
+    /// `STORAGE` is the proof of key inside smart contracts (AppKey) in storage tire.
+    pub(crate) const STORAGE: ProofLevel = 0x01;
+}
+
+/// `Visibility` is the prefix to identify the external account key and contract account key
+#[repr(u8)]
+pub(crate) enum KeyVisibility {
+    Public = 0,
+    Protected = 1,
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::accounts_trie::account_key;
     use crate::accounts_trie::AccountField;
-    use crate::trie_key::TrieKey;
     use crate::version::{V1, V2};
     use pchain_types::cryptography::PublicAddress;
 
@@ -543,7 +600,7 @@ mod test {
         let env = TestEnv::default();
         let db = KeyInstrumentedDB::<DummyStorage, V1>::new(&env.db, env.address.to_vec());
         let ret = Mpt::<DummyStorage, V1>::new(db.clone());
-        let key = TrieKey::<V1>::account_key(&env.address, AccountField::Nonce);
+        let key = account_key::<V1>(&env.address, AccountField::Nonce);
         assert_eq!(ret.get(&key).unwrap(), None);
     }
 

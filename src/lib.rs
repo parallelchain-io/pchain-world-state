@@ -37,14 +37,10 @@ pub use db::DB;
 pub mod error;
 pub use error::*;
 
-mod trie_key;
-
 pub mod storage_trie;
 pub use storage_trie::*;
 
 mod mpt;
-
-mod proof_node;
 
 pub mod world_state;
 pub use world_state::*;

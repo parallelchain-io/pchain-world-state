@@ -519,6 +519,25 @@ mod test {
             Self { db, address }
         }
     }
+
+    #[test]
+    pub fn simple_insert_v1() {
+        let mut env = TestEnv::default();
+        let db = KeyInstrumentedDB::<DummyStorage, V1>::new(&env.db, env.address.to_vec());
+        let apple_key = b"apple".to_vec();
+        let apple_value = b"apple_12345".to_vec();
+        let banana_key = b"banana".to_vec();
+        let banana_value = b"banana_12345".to_vec();
+        let mut mpt = Mpt::<DummyStorage, V1>::new(db);
+        mpt.set(&apple_key, apple_value.clone()).unwrap();
+        mpt.set(&banana_key, banana_value.clone()).unwrap();
+        let changes = mpt.close();
+        println!("================================mpt changes============================");
+        println!("inserts: {:?}, deletes {:?}", changes.0, changes.1);
+        env.db.apply_changes(changes.0, changes.1);
+        println!("{:?}", env.db);
+    }
+
     #[test]
     pub fn init_and_open() {
         let env = TestEnv::default();

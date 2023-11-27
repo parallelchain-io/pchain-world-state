@@ -147,7 +147,7 @@ pub fn upgrade() {
 
 #[test]
 pub fn test_upgrade_v1_to_v2() {
-    let db = DummyStorage(HashMap::new());
+    let mut db = DummyStorage(HashMap::new());
     let mut ws_1 = WorldState::<_, V1>::new(&db);
 
     // Setup an account with some data in its storage
@@ -162,17 +162,25 @@ pub fn test_upgrade_v1_to_v2() {
     }
     
     // Upgrade
-    let mut ws_2 = WorldState::<_, V2>::upgrade(ws_1).unwrap();
+    let mut ws_2 = WorldState::<_, V1>::upgrade(ws_1).unwrap();
+
+    // Save to DB
+    let ws_2_changes = ws_2.close().unwrap();
+    let ws_2_root_hash = ws_2_changes.new_root_hash;
+    db.apply_changes(ws_2_changes.inserts, ws_2_changes.deletes);
+
+    // Open world state from new root hash
+    let mut ws_2 = WorldState::<_, V2>::open(&db, ws_2_root_hash);
 
     // Check: there is only one account
     let ws_2_all_accounts = ws_2.account_trie().all().unwrap();
     assert_eq!(ws_2_all_accounts.len(), 1);
-    
+
     // Check: account information is preserved
     let account = ws_2_all_accounts.get(&[1u8; 32]).unwrap();
     assert_eq!(
         (account.balance, account.cbi_version, account.code.is_empty(), account.nonce, account.storage_hash.is_empty()), 
-        (12345, None, true, 0, false)
+        (12345, None, true, 0, false) // storage hash has updated when close() was called
     );
 
     // Check: storage data is preserved

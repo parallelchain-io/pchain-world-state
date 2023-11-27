@@ -282,406 +282,411 @@ where
     }
 }
 
-#[test]
-fn test_binary_heap() {
-    use std::collections::HashMap;
-    #[derive(Clone, Debug, Eq, Ord)]
-    struct TestU32 {
-        name: String,
-        data: u32,
-    }
-    impl Into<Vec<u8>> for TestU32 {
-        fn into(self) -> Vec<u8> {
-            use pchain_types::serialization::Serializable;
-            <(Vec<u8>, u32)>::serialize(&(self.name.as_bytes().to_vec(), self.data))
+#[cfg(test)]
+mod test {
+    use crate::{KeySpaced, NetworkAccountStorage, index_heap::IndexHeap};
+
+    #[test]
+    fn test_binary_heap() {
+        use std::collections::HashMap;
+        #[derive(Clone, Debug, Eq, Ord)]
+        struct TestU32 {
+            name: String,
+            data: u32,
         }
-    }
-    impl From<Vec<u8>> for TestU32 {
-        fn from(bytes: Vec<u8>) -> Self {
-            use pchain_types::serialization::Deserializable;
-            let r = <(Vec<u8>, u32)>::deserialize(&bytes).unwrap();
-            Self {
-                name: String::from_utf8(r.0).unwrap(),
-                data: r.1,
+        impl Into<Vec<u8>> for TestU32 {
+            fn into(self) -> Vec<u8> {
+                use pchain_types::serialization::Serializable;
+                <(Vec<u8>, u32)>::serialize(&(self.name.as_bytes().to_vec(), self.data))
             }
         }
-    }
-    impl PartialEq for TestU32 {
-        fn eq(&self, other: &Self) -> bool {
-            self.data.eq(&other.data)
-        }
-    }
-    impl PartialOrd for TestU32 {
-        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-            self.data.partial_cmp(&other.data)
-        }
-    }
-    impl KeySpaced for TestU32 {
-        fn key(&self) -> &[u8] {
-            self.name.as_bytes()
-        }
-    }
-    #[derive(Clone)]
-    struct KVStore {
-        inner: HashMap<Vec<u8>, Vec<u8>>,
-    }
-    impl NetworkAccountStorage for KVStore {
-        fn get(&mut self, key: &[u8]) -> Option<Vec<u8>> {
-            match self.inner.get(&key.to_vec()) {
-                Some(v) => Some(v.to_owned()),
-                None => None,
+        impl From<Vec<u8>> for TestU32 {
+            fn from(bytes: Vec<u8>) -> Self {
+                use pchain_types::serialization::Deserializable;
+                let r = <(Vec<u8>, u32)>::deserialize(&bytes).unwrap();
+                Self {
+                    name: String::from_utf8(r.0).unwrap(),
+                    data: r.1,
+                }
             }
         }
-        fn contains(&mut self, key: &[u8]) -> bool {
-            self.inner.contains_key(key)
+        impl PartialEq for TestU32 {
+            fn eq(&self, other: &Self) -> bool {
+                self.data.eq(&other.data)
+            }
         }
-        fn set(&mut self, key: &[u8], value: Vec<u8>) {
-            self.inner.insert(key.to_vec(), value);
+        impl PartialOrd for TestU32 {
+            fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+                self.data.partial_cmp(&other.data)
+            }
         }
-        fn delete(&mut self, key: &[u8]) {
-            self.inner.remove(key);
+        impl KeySpaced for TestU32 {
+            fn key(&self) -> &[u8] {
+                self.name.as_bytes()
+            }
         }
-    }
-
-    let mut kv = KVStore {
-        inner: HashMap::new(),
-    };
-
-    // Insert elements
-    {
-        let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 32);
-
-        heap.insert(TestU32 {
-            name: "apple".to_string(),
-            data: 5,
-        })
-        .unwrap();
-        heap.insert(TestU32 {
-            name: "boy".to_string(),
-            data: 25,
-        })
-        .unwrap();
-        heap.insert(TestU32 {
-            name: "cat".to_string(),
-            data: 12,
-        })
-        .unwrap();
-        heap.insert(TestU32 {
-            name: "duck".to_string(),
-            data: 17,
-        })
-        .unwrap();
-        heap.insert(TestU32 {
-            name: "egg".to_string(),
-            data: 36,
-        })
-        .unwrap();
-        heap.insert(TestU32 {
-            name: "fan".to_string(),
-            data: 100,
-        })
-        .unwrap();
-        heap.insert(TestU32 {
-            name: "hammer".to_string(),
-            data: 19,
-        })
-        .unwrap();
-        assert_eq!(heap.length(), 7);
-    }
-    // one key for length, two keys for each record
-    assert_eq!(kv.inner.len(), 1 + 7 * 2);
-
-    // Extract elements
-    {
-        let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 32);
-        let v = heap.extract().unwrap();
-        assert_eq!(
-            TestU32::from(v),
-            TestU32 {
-                data: 5,
-                name: "apple".to_string()
+        #[derive(Clone)]
+        struct KVStore {
+            inner: HashMap<Vec<u8>, Vec<u8>>,
+        }
+        impl NetworkAccountStorage for KVStore {
+            fn get(&mut self, key: &[u8]) -> Option<Vec<u8>> {
+                match self.inner.get(&key.to_vec()) {
+                    Some(v) => Some(v.to_owned()),
+                    None => None,
+                }
             }
-        );
-        let v = heap.extract().unwrap();
-        assert_eq!(
-            TestU32::from(v),
-            TestU32 {
-                data: 12,
-                name: "cat".to_string()
+            fn contains(&mut self, key: &[u8]) -> bool {
+                self.inner.contains_key(key)
             }
-        );
-        let v = heap.extract().unwrap();
-        assert_eq!(
-            TestU32::from(v),
-            TestU32 {
-                data: 17,
-                name: "duck".to_string()
+            fn set(&mut self, key: &[u8], value: Vec<u8>) {
+                self.inner.insert(key.to_vec(), value);
             }
-        );
-        assert_eq!(heap.length(), 4);
-    }
-    assert_eq!(kv.inner.len(), 1 + 4 * 2);
-
-    // Change Key (decrease key)
-    {
-        let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 32);
-        heap.change_key(TestU32 {
-            name: "egg".to_string(),
-            data: 17,
-        });
-        assert_eq!(
-            TestU32::from(heap.get(0).unwrap()),
-            TestU32 {
-                data: 17,
-                name: "egg".to_string()
+            fn delete(&mut self, key: &[u8]) {
+                self.inner.remove(key);
             }
-        );
-        assert_eq!(heap.get_by("egg".as_bytes()).unwrap().data, 17);
-        assert_eq!(heap.length(), 4);
+        }
 
-        let values = heap.unordered_values();
-        assert_eq!(
-            values[0],
-            TestU32 {
-                data: 17,
-                name: "egg".to_string()
-            }
-        );
-    }
-    assert_eq!(kv.inner.len(), 1 + 4 * 2);
+        let mut kv = KVStore {
+            inner: HashMap::new(),
+        };
 
-    // Change Key (increase key)
-    {
-        let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 32);
-        heap.change_key(TestU32 {
-            name: "egg".to_string(),
-            data: 20,
-        });
-        assert_eq!(
-            TestU32::from(heap.get(0).unwrap()),
-            TestU32 {
-                data: 19,
-                name: "hammer".to_string()
-            }
-        );
-        assert_eq!(heap.get_by("egg".as_bytes()).unwrap().data, 20);
-        assert_eq!(heap.length(), 4);
+        // Insert elements
+        {
+            let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 32);
 
-        let values = heap.unordered_values();
-        assert_eq!(
-            values[0],
-            TestU32 {
-                data: 19,
-                name: "hammer".to_string()
-            }
-        );
-    }
-    assert_eq!(kv.inner.len(), 1 + 4 * 2);
-
-    // Remove element
-    {
-        let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 32);
-        heap.remove_item("not exist".to_string().as_bytes());
-        let values = heap.unordered_values();
-        assert_eq!(values.len(), 4);
-    }
-    assert_eq!(kv.inner.len(), 1 + 4 * 2);
-    {
-        let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 32);
-        heap.remove_item("duck".to_string().as_bytes()); // key existed before but removed later
-
-        let values = heap.unordered_values();
-        assert_eq!(values.len(), 4);
-    }
-    assert_eq!(kv.inner.len(), 1 + 4 * 2);
-    {
-        let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 32);
-        heap.remove_item("egg".to_string().as_bytes()); // key to remove
-        let values = heap.unordered_values();
-        assert_eq!(values.len(), 3);
-    }
-    assert_eq!(kv.inner.len(), 1 + 3 * 2);
-    {
-        let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 32);
-        heap.remove_item("fan".to_string().as_bytes()); // the heaviest item
-        let values = heap.unordered_values();
-        assert_eq!(values.len(), 2);
-    }
-    assert_eq!(kv.inner.len(), 1 + 2 * 2);
-
-    // Clear all
-    {
-        let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 32);
-        heap.clear();
-        assert_eq!(heap.length(), 0);
-    }
-    assert_eq!(kv.inner.len(), 1);
-
-    // Full Heap
-    {
-        let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 65535);
-        for i in 1..65536 {
             heap.insert(TestU32 {
-                name: i.to_string(),
-                data: i as u32,
+                name: "apple".to_string(),
+                data: 5,
             })
             .unwrap();
-        }
-        assert_eq!(heap.length(), 65535);
-        assert!(heap
-            .insert(TestU32 {
-                name: 0.to_string(),
-                data: 0 as u32
+            heap.insert(TestU32 {
+                name: "boy".to_string(),
+                data: 25,
             })
-            .is_err());
-        assert_eq!(heap.length(), 65535);
-    }
-    assert_eq!(kv.inner.len(), 1 + 65535 * 2);
-
-    // Insert Extract
-    {
-        let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 65535);
-        let result = heap.insert_extract(TestU32 {
-            name: 0_u64.to_string(),
-            data: 0,
-        });
-        assert!(result.is_err());
-        assert_eq!(heap.length(), 65535);
-        let result = heap
-            .insert_extract(TestU32 {
-                name: 65536_u32.to_string(),
-                data: 65536,
-            })
-            .unwrap()
             .unwrap();
-        assert_eq!(result.name, 1_u32.to_string());
-        assert_eq!(result.data, 1_u32);
-        assert_eq!(heap.length(), 65535);
-    }
-    assert_eq!(kv.inner.len(), 1 + 65535 * 2);
-
-    // Check if heap maintains order correctly
-    fn check_order(mut heap: IndexHeap<KVStore, TestU32>) -> (TestU32, TestU32) {
-        let mut check_key = std::collections::HashSet::new();
-        let mut last_v = heap.extract().unwrap();
-        let first_v = last_v.clone();
-        check_key.insert(first_v.key().to_vec());
-        while let Some(v) = heap.extract() {
-            let v_key = v.key().to_vec();
-            assert!(!check_key.contains(&v_key)); // no duplicated key!
-            check_key.insert(v_key);
-            assert!(last_v < v); // order is maintained!
-            last_v = v;
+            heap.insert(TestU32 {
+                name: "cat".to_string(),
+                data: 12,
+            })
+            .unwrap();
+            heap.insert(TestU32 {
+                name: "duck".to_string(),
+                data: 17,
+            })
+            .unwrap();
+            heap.insert(TestU32 {
+                name: "egg".to_string(),
+                data: 36,
+            })
+            .unwrap();
+            heap.insert(TestU32 {
+                name: "fan".to_string(),
+                data: 100,
+            })
+            .unwrap();
+            heap.insert(TestU32 {
+                name: "hammer".to_string(),
+                data: 19,
+            })
+            .unwrap();
+            assert_eq!(heap.length(), 7);
         }
-        (first_v, last_v)
-    }
+        // one key for length, two keys for each record
+        assert_eq!(kv.inner.len(), 1 + 7 * 2);
 
-    fn check_unchanged_items(
-        old_items: Vec<TestU32>,
-        new_items: Vec<TestU32>,
-        except: Option<Vec<u8>>,
-    ) {
-        let mut old_set = std::collections::HashMap::new();
-        for item in old_items {
-            if except == Some(item.key().to_vec()) {
-                continue;
-            }
-            old_set.insert(item.key().to_vec(), item);
+        // Extract elements
+        {
+            let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 32);
+            let v = heap.extract().unwrap();
+            assert_eq!(
+                TestU32::from(v),
+                TestU32 {
+                    data: 5,
+                    name: "apple".to_string()
+                }
+            );
+            let v = heap.extract().unwrap();
+            assert_eq!(
+                TestU32::from(v),
+                TestU32 {
+                    data: 12,
+                    name: "cat".to_string()
+                }
+            );
+            let v = heap.extract().unwrap();
+            assert_eq!(
+                TestU32::from(v),
+                TestU32 {
+                    data: 17,
+                    name: "duck".to_string()
+                }
+            );
+            assert_eq!(heap.length(), 4);
         }
-        for item in new_items {
-            if let Some(old_item) = old_set.get(&item.key().to_vec()) {
-                assert_eq!(old_item.data, item.data);
-            }
-        }
-    }
+        assert_eq!(kv.inner.len(), 1 + 4 * 2);
 
-    fn random_heap(kv: &mut KVStore, start: u32, end: u32) -> IndexHeap<KVStore, TestU32> {
-        let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], kv, end - start);
-        let mut items = vec![];
-        for i in start..end {
-            items.push(TestU32 {
-                name: i.to_string(),
-                data: i * 2 as u32,
+        // Change Key (decrease key)
+        {
+            let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 32);
+            heap.change_key(TestU32 {
+                name: "egg".to_string(),
+                data: 17,
             });
-        }
-        while !items.is_empty() {
-            let i = rand::random::<usize>() % items.len();
-            let item = items.remove(i);
-            heap.insert(item).unwrap();
-        }
-        return heap;
-    }
+            assert_eq!(
+                TestU32::from(heap.get(0).unwrap()),
+                TestU32 {
+                    data: 17,
+                    name: "egg".to_string()
+                }
+            );
+            assert_eq!(heap.get_by("egg".as_bytes()).unwrap().data, 17);
+            assert_eq!(heap.length(), 4);
 
-    // iteration test to check if Order is maintained for insert
-    for t in 1..130 {
-        let mut kv = KVStore {
-            inner: HashMap::new(),
-        };
-        let mut heap = random_heap(&mut kv, 1, 129);
-        assert!(heap.length() == 128);
-        let old_items = heap.unordered_values();
+            let values = heap.unordered_values();
+            assert_eq!(
+                values[0],
+                TestU32 {
+                    data: 17,
+                    name: "egg".to_string()
+                }
+            );
+        }
+        assert_eq!(kv.inner.len(), 1 + 4 * 2);
 
-        let result = heap.insert(TestU32 {
-            name: format!("i_{t}").to_string(),
-            data: t * 2 - 1,
-        });
-        if result.is_ok() {
+        // Change Key (increase key)
+        {
+            let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 32);
+            heap.change_key(TestU32 {
+                name: "egg".to_string(),
+                data: 20,
+            });
+            assert_eq!(
+                TestU32::from(heap.get(0).unwrap()),
+                TestU32 {
+                    data: 19,
+                    name: "hammer".to_string()
+                }
+            );
+            assert_eq!(heap.get_by("egg".as_bytes()).unwrap().data, 20);
+            assert_eq!(heap.length(), 4);
+
+            let values = heap.unordered_values();
+            assert_eq!(
+                values[0],
+                TestU32 {
+                    data: 19,
+                    name: "hammer".to_string()
+                }
+            );
+        }
+        assert_eq!(kv.inner.len(), 1 + 4 * 2);
+
+        // Remove element
+        {
+            let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 32);
+            heap.remove_item("not exist".to_string().as_bytes());
+            let values = heap.unordered_values();
+            assert_eq!(values.len(), 4);
+        }
+        assert_eq!(kv.inner.len(), 1 + 4 * 2);
+        {
+            let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 32);
+            heap.remove_item("duck".to_string().as_bytes()); // key existed before but removed later
+
+            let values = heap.unordered_values();
+            assert_eq!(values.len(), 4);
+        }
+        assert_eq!(kv.inner.len(), 1 + 4 * 2);
+        {
+            let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 32);
+            heap.remove_item("egg".to_string().as_bytes()); // key to remove
+            let values = heap.unordered_values();
+            assert_eq!(values.len(), 3);
+        }
+        assert_eq!(kv.inner.len(), 1 + 3 * 2);
+        {
+            let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 32);
+            heap.remove_item("fan".to_string().as_bytes()); // the heaviest item
+            let values = heap.unordered_values();
+            assert_eq!(values.len(), 2);
+        }
+        assert_eq!(kv.inner.len(), 1 + 2 * 2);
+
+        // Clear all
+        {
+            let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 32);
+            heap.clear();
+            assert_eq!(heap.length(), 0);
+        }
+        assert_eq!(kv.inner.len(), 1);
+
+        // Full Heap
+        {
+            let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 65535);
+            for i in 1..65536 {
+                heap.insert(TestU32 {
+                    name: i.to_string(),
+                    data: i as u32,
+                })
+                .unwrap();
+            }
+            assert_eq!(heap.length(), 65535);
             assert!(heap
-                .get_by(&format!("i_{t}").to_string().as_bytes())
-                .is_some());
+                .insert(TestU32 {
+                    name: 0.to_string(),
+                    data: 0 as u32
+                })
+                .is_err());
+            assert_eq!(heap.length(), 65535);
         }
-        assert!(heap.length() == 128);
-        let new_items = heap.unordered_values();
+        assert_eq!(kv.inner.len(), 1 + 65535 * 2);
 
-        check_order(heap);
-        check_unchanged_items(old_items, new_items, None);
-    }
-
-    // iteration test to check if Order is maintained for remove
-    for t in 1..129 {
-        let mut kv = KVStore {
-            inner: HashMap::new(),
-        };
-        let mut heap = random_heap(&mut kv, 1, 129);
-        assert!(heap.length() == 128);
-        let old_items = heap.unordered_values();
-
-        heap.remove_item(&t.to_string().as_bytes());
-        assert!(heap.get_by(&t.to_string().as_bytes()).is_none());
-        assert!(heap.length() == 127);
-        let new_items = heap.unordered_values();
-
-        check_order(heap);
-        check_unchanged_items(old_items, new_items, None);
-    }
-
-    // iteration test to check if Order is maintained for change key
-    for _ in 0..20 {
-        let mut kv = KVStore {
-            inner: HashMap::new(),
-        };
-        let mut heap = random_heap(&mut kv, 100, 228);
-        assert!(heap.length() == 128);
-        let old_items = heap.unordered_values();
-
-        let random_key: u32 = rand::random::<u32>() % 128_u32 + 100;
-        let mut random_value: u32 = rand::random::<u32>() % 500_u32;
-        if random_value >= 100 && random_value <= 228 * 2 && random_value % 2 == 0 {
-            random_value += 1; //make it odd number to avoid same weight.
+        // Insert Extract
+        {
+            let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], &mut kv, 65535);
+            let result = heap.insert_extract(TestU32 {
+                name: 0_u64.to_string(),
+                data: 0,
+            });
+            assert!(result.is_err());
+            assert_eq!(heap.length(), 65535);
+            let result = heap
+                .insert_extract(TestU32 {
+                    name: 65536_u32.to_string(),
+                    data: 65536,
+                })
+                .unwrap()
+                .unwrap();
+            assert_eq!(result.name, 1_u32.to_string());
+            assert_eq!(result.data, 1_u32);
+            assert_eq!(heap.length(), 65535);
         }
-        heap.change_key(TestU32 {
-            name: random_key.to_string(),
-            data: random_value,
-        });
-        assert!(heap.get_by(&random_key.to_string().as_bytes()).is_some());
-        assert!(heap.length() == 128);
-        let new_items = heap.unordered_values();
+        assert_eq!(kv.inner.len(), 1 + 65535 * 2);
 
-        check_order(heap);
-        check_unchanged_items(
-            old_items,
-            new_items,
-            Some(random_key.to_string().as_bytes().to_vec()),
-        );
+        // Check if heap maintains order correctly
+        fn check_order(mut heap: IndexHeap<KVStore, TestU32>) -> (TestU32, TestU32) {
+            let mut check_key = std::collections::HashSet::new();
+            let mut last_v = heap.extract().unwrap();
+            let first_v = last_v.clone();
+            check_key.insert(first_v.key().to_vec());
+            while let Some(v) = heap.extract() {
+                let v_key = v.key().to_vec();
+                assert!(!check_key.contains(&v_key)); // no duplicated key!
+                check_key.insert(v_key);
+                assert!(last_v < v); // order is maintained!
+                last_v = v;
+            }
+            (first_v, last_v)
+        }
+
+        fn check_unchanged_items(
+            old_items: Vec<TestU32>,
+            new_items: Vec<TestU32>,
+            except: Option<Vec<u8>>,
+        ) {
+            let mut old_set = std::collections::HashMap::new();
+            for item in old_items {
+                if except == Some(item.key().to_vec()) {
+                    continue;
+                }
+                old_set.insert(item.key().to_vec(), item);
+            }
+            for item in new_items {
+                if let Some(old_item) = old_set.get(&item.key().to_vec()) {
+                    assert_eq!(old_item.data, item.data);
+                }
+            }
+        }
+
+        fn random_heap(kv: &mut KVStore, start: u32, end: u32) -> IndexHeap<KVStore, TestU32> {
+            let mut heap = IndexHeap::<KVStore, TestU32>::new(vec![], kv, end - start);
+            let mut items = vec![];
+            for i in start..end {
+                items.push(TestU32 {
+                    name: i.to_string(),
+                    data: i * 2 as u32,
+                });
+            }
+            while !items.is_empty() {
+                let i = rand::random::<usize>() % items.len();
+                let item = items.remove(i);
+                heap.insert(item).unwrap();
+            }
+            return heap;
+        }
+
+        // iteration test to check if Order is maintained for insert
+        for t in 1..130 {
+            let mut kv = KVStore {
+                inner: HashMap::new(),
+            };
+            let mut heap = random_heap(&mut kv, 1, 129);
+            assert!(heap.length() == 128);
+            let old_items = heap.unordered_values();
+
+            let result = heap.insert(TestU32 {
+                name: format!("i_{t}").to_string(),
+                data: t * 2 - 1,
+            });
+            if result.is_ok() {
+                assert!(heap
+                    .get_by(&format!("i_{t}").to_string().as_bytes())
+                    .is_some());
+            }
+            assert!(heap.length() == 128);
+            let new_items = heap.unordered_values();
+
+            check_order(heap);
+            check_unchanged_items(old_items, new_items, None);
+        }
+
+        // iteration test to check if Order is maintained for remove
+        for t in 1..129 {
+            let mut kv = KVStore {
+                inner: HashMap::new(),
+            };
+            let mut heap = random_heap(&mut kv, 1, 129);
+            assert!(heap.length() == 128);
+            let old_items = heap.unordered_values();
+
+            heap.remove_item(&t.to_string().as_bytes());
+            assert!(heap.get_by(&t.to_string().as_bytes()).is_none());
+            assert!(heap.length() == 127);
+            let new_items = heap.unordered_values();
+
+            check_order(heap);
+            check_unchanged_items(old_items, new_items, None);
+        }
+
+        // iteration test to check if Order is maintained for change key
+        for _ in 0..20 {
+            let mut kv = KVStore {
+                inner: HashMap::new(),
+            };
+            let mut heap = random_heap(&mut kv, 100, 228);
+            assert!(heap.length() == 128);
+            let old_items = heap.unordered_values();
+
+            let random_key: u32 = rand::random::<u32>() % 128_u32 + 100;
+            let mut random_value: u32 = rand::random::<u32>() % 500_u32;
+            if random_value >= 100 && random_value <= 228 * 2 && random_value % 2 == 0 {
+                random_value += 1; //make it odd number to avoid same weight.
+            }
+            heap.change_key(TestU32 {
+                name: random_key.to_string(),
+                data: random_value,
+            });
+            assert!(heap.get_by(&random_key.to_string().as_bytes()).is_some());
+            assert!(heap.length() == 128);
+            let new_items = heap.unordered_values();
+
+            check_order(heap);
+            check_unchanged_items(
+                old_items,
+                new_items,
+                Some(random_key.to_string().as_bytes().to_vec()),
+            );
+        }
     }
 }

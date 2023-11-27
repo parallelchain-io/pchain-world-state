@@ -129,7 +129,7 @@ where
     }
 
     pub fn delete(&'a mut self) {
-        for k in vec![
+        for k in [
             [self.prefix_key.as_slice(), &pool_data::OPERATOR].concat(),
             [self.prefix_key.as_slice(), &pool_data::POWER].concat(),
             [self.prefix_key.as_slice(), &pool_data::COMMISSION_RATE].concat(),

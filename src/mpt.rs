@@ -130,7 +130,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
                 let proof_ret = generate_proof::<_, NoExtensionLayout, _, _>(
                     self,
                     &self.root_hash,
-                    vec![key].iter(),
+                    [key].iter(),
                 );
                 let proof = proof_ret.map_err(|err| MptError::from(*err))?;
                 Ok((proof, value))
@@ -141,7 +141,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
                 let proof_ret = generate_proof::<_, ExtensionLayout, _, _>(
                     self,
                     &self.root_hash,
-                    vec![key].iter(),
+                    [key].iter(),
                 );
                 let proof = proof_ret.map_err(|err| MptError::from(*err))?;
                 Ok((proof, value))

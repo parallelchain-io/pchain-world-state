@@ -89,7 +89,7 @@ where
     }
 
     pub fn delete(&mut self) {
-        for k in vec![
+        for k in [
             [self.prefix_key.as_slice(), &deposit_data::BALANCE].concat(),
             [
                 self.prefix_key.as_slice(),

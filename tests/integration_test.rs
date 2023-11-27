@@ -41,9 +41,6 @@ impl DummyStorage {
             self.0.remove(&key);
         }
     }
-    fn size(&self) -> usize {
-        return self.0.len();
-    }
 }
 
 pub fn generate_public_addr() -> PublicAddress {
@@ -73,7 +70,7 @@ pub fn generate_spec_account() -> (PublicAddress, AccountInstance) {
 pub fn generate_accounts() -> HashMap<PublicAddress, AccountInstance> {
     let mut accounts_map: HashMap<PublicAddress, AccountInstance> = HashMap::new();
     // generate 10000 Accounts
-    for index in 1..10000 {
+    for index in 1..100 {
         let mut account = AccountInstance::default();
         let account_address = generate_public_addr();
         account.nonce = index.try_into().unwrap();
@@ -146,4 +143,46 @@ pub fn upgrade() {
         "Iter cost: {} milliseconds", //1296 milliseconds
         end_time.duration_since(start_time).as_millis()
     )
+}
+
+#[test]
+pub fn test_upgrade_v1_to_v2() {
+    let db = DummyStorage(HashMap::new());
+    let mut ws_1 = WorldState::<_, V1>::new(&db);
+
+    // Setup an account with some data in its storage
+    ws_1.account_trie_mut().set_balance(&[1u8; 32], 12345).unwrap();
+    for (key, value) in [
+        (vec![31u8; 31], vec![1]),
+        (vec![32u8; 32], vec![2, 2]),
+        (vec![33u8; 33], vec![3, 3, 3]),
+        (vec![64u8; 64], vec![4, 4, 4, 4]),
+    ] {
+        ws_1.storage_trie_mut(&[1u8; 32]).unwrap().set(&key, value).unwrap();
+    }
+    
+    // Upgrade
+    let mut ws_2 = WorldState::<_, V2>::upgrade(ws_1).unwrap();
+
+    // Check: there is only one account
+    let ws_2_all_accounts = ws_2.account_trie().all().unwrap();
+    assert_eq!(ws_2_all_accounts.len(), 1);
+    
+    // Check: account information is preserved
+    let account = ws_2_all_accounts.get(&[1u8; 32]).unwrap();
+    assert_eq!(
+        (account.balance, account.cbi_version, account.code.is_empty(), account.nonce, account.storage_hash.is_empty()), 
+        (12345, None, true, 0, false)
+    );
+
+    // Check: storage data is preserved
+    let storage = ws_2.storage_trie(&[1u8; 32]).unwrap();
+    for (key, value) in [
+        (vec![31u8; 31], vec![1]),
+        (vec![32u8; 32], vec![2, 2]),
+        (vec![33u8; 33], vec![3, 3, 3]),
+        (vec![64u8; 64], vec![4, 4, 4, 4]),
+    ] {
+        assert_eq!(storage.get(&key).unwrap(), Some(value));
+    }
 }

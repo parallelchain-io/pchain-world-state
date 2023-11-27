@@ -46,9 +46,6 @@ impl DummyStorage {
             self.0.remove(&key);
         }
     }
-    fn size(&self) -> usize {
-        return self.0.len();
-    }
 }
 
 #[derive(Debug, Clone)]

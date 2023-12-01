@@ -10,14 +10,14 @@ edition = "2021"
 borsh = "0.10.2"
 hash-db = "0.16.0"
 keccak-hasher = "0.16.0"
-pchain-types = { git = "https://github.com/parallelchain-io/pchain-types-rust", branch = "protocol_v0.5" }
+pchain-types = { git = "https://github.com/parallelchain-io/pchain-types-rust" }
 reference-trie = "0.29.0"
 # the newest version is 0.28.0, but reference-trie lib depends on the trait `TrieLayout` in trie-db 0.27.0
 trie-db = "=0.27.0"
 
 [dev-dependencies]
 base64url = "0.1.0"
-pchain-types = { git = "https://github.com/parallelchain-io/pchain-types-rust", branch = "protocol_v0.5", features = [
+pchain-types = { git = "https://github.com/parallelchain-io/pchain-types-rust", features = [
     "rand_core",
 ] }
 rand = "0.8.5"

@@ -43,20 +43,20 @@ pub struct PoolDict<'a, S, const M: u16>
 where
     S: NetworkAccountStorage,
 {
-    pub(in crate::network) prefix_key: Vec<u8>,
-    pub(in crate::network) world_state: &'a mut S,
+    pub(in crate::network_account_storage) prefix_key: Vec<u8>,
+    pub(in crate::network_account_storage) world_state: &'a mut S,
 }
 
 impl<'a, S, const M: u16> PoolDict<'a, S, M>
 where
     S: NetworkAccountStorage,
 {
-    pub fn exists(&self) -> bool {
+    pub fn exists(&mut self) -> bool {
         let key = [self.prefix_key.as_slice(), &pool_data::OPERATOR].concat();
         self.world_state.contains(&key)
     }
 
-    pub fn operator(&self) -> Option<PublicAddress> {
+    pub fn operator(&mut self) -> Option<PublicAddress> {
         let bytes = self
             .world_state
             .get(&[self.prefix_key.as_slice(), &pool_data::OPERATOR].concat())?;
@@ -73,7 +73,7 @@ where
         );
     }
 
-    pub fn power(&self) -> Option<u64> {
+    pub fn power(&mut self) -> Option<u64> {
         let bytes = self
             .world_state
             .get(&[self.prefix_key.as_slice(), &pool_data::POWER].concat())?;
@@ -90,7 +90,7 @@ where
         );
     }
 
-    pub fn commission_rate(&self) -> Option<u8> {
+    pub fn commission_rate(&mut self) -> Option<u8> {
         let bytes = self
             .world_state
             .get(&[self.prefix_key.as_slice(), &pool_data::COMMISSION_RATE].concat())?;
@@ -107,7 +107,7 @@ where
         );
     }
 
-    pub fn operator_stake(&self) -> Option<Option<Stake>> {
+    pub fn operator_stake(&mut self) -> Option<Option<Stake>> {
         self.world_state
             .get(&[self.prefix_key.as_slice(), &pool_data::OPERATOR_STAKE].concat())
             .map(|bytes| Option::<Stake>::deserialize(&bytes).unwrap())
@@ -129,7 +129,7 @@ where
     }
 
     pub fn delete(&'a mut self) {
-        for k in vec![
+        for k in [
             [self.prefix_key.as_slice(), &pool_data::OPERATOR].concat(),
             [self.prefix_key.as_slice(), &pool_data::POWER].concat(),
             [self.prefix_key.as_slice(), &pool_data::COMMISSION_RATE].concat(),
@@ -147,7 +147,7 @@ where
     S: NetworkAccountStorage,
 {
     type Error = ();
-    fn try_from(pool: PoolDict<'a, S, M>) -> Result<Self, Self::Error> {
+    fn try_from(mut pool: PoolDict<'a, S, M>) -> Result<Self, Self::Error> {
         Ok(Pool {
             operator: pool.operator().ok_or(())?,
             commission_rate: pool.commission_rate().ok_or(())?,
@@ -174,15 +174,18 @@ where
     /// A single byte prefix key to partition the Pool values (as a nested IndexMap) and IndexMap ValidatorPool itself.
     /// ### Cautions
     /// The value 3u8 is chosen because the value 0u8, 1u8 and 2u8 are already chosen in IndexMap.
-    pub(in crate::network) const PREFIX_NESTED_MAP: [u8; 1] = [3u8];
+    pub(in crate::network_account_storage) const PREFIX_NESTED_MAP: [u8; 1] = [3u8];
 
-    pub(in crate::network) fn new(world_state: &'a mut S, prefix_key: Vec<u8>) -> Self {
+    pub(in crate::network_account_storage) fn new(
+        world_state: &'a mut S,
+        prefix_key: Vec<u8>,
+    ) -> Self {
         Self {
             inner: IndexMap::<S, PoolAddress>::new(prefix_key, world_state, N as u32),
         }
     }
 
-    pub fn length(&self) -> u32 {
+    pub fn length(&mut self) -> u32 {
         self.inner.length()
     }
 
@@ -237,7 +240,7 @@ where
         self.inner.set_length(0);
     }
 
-    pub fn get(&self, index: u32) -> Option<PoolAddress> {
+    pub fn get(&mut self, index: u32) -> Option<PoolAddress> {
         self.inner.get(index)
     }
 }

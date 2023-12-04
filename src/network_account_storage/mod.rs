@@ -10,15 +10,20 @@
 //! is composed of various fields stored in its Storage Trie.
 
 pub mod network_account;
+pub use network_account::*;
 
 pub mod pool;
+pub use pool::*;
 
 pub mod deposit;
+pub use deposit::*;
 
 pub mod stake;
+pub use stake::*;
 
 pub(crate) mod index_heap;
 
 pub(crate) mod index_map;
 
 pub mod constants;
+pub use constants::*;

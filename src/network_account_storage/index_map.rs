@@ -18,9 +18,9 @@ where
     T: NetworkAccountStorage,
     V: Clone + PartialEq + Eq + Into<Vec<u8>> + From<Vec<u8>> + KeySpaced,
 {
-    pub(in crate::network) store: &'a mut T,
-    pub(in crate::network) domain: Vec<u8>,
-    pub(in crate::network) capacity: u32,
+    pub(in crate::network_account_storage) store: &'a mut T,
+    pub(in crate::network_account_storage) domain: Vec<u8>,
+    pub(in crate::network_account_storage) capacity: u32,
     _phantom: PhantomData<V>,
 }
 
@@ -29,11 +29,15 @@ where
     T: NetworkAccountStorage,
     V: Clone + PartialEq + Eq + Into<Vec<u8>> + From<Vec<u8>> + KeySpaced,
 {
-    pub(in crate::network) const PREFIX_LEN: [u8; 1] = [0u8];
-    pub(in crate::network) const PREFIX_KEY_INDEX: [u8; 1] = [1u8];
-    pub(in crate::network) const PREFIX_INDEX_VALUE: [u8; 1] = [2u8];
+    pub(in crate::network_account_storage) const PREFIX_LEN: [u8; 1] = [0u8];
+    pub(in crate::network_account_storage) const PREFIX_KEY_INDEX: [u8; 1] = [1u8];
+    pub(in crate::network_account_storage) const PREFIX_INDEX_VALUE: [u8; 1] = [2u8];
 
-    pub(in crate::network) fn new(domain: Vec<u8>, store: &'a mut T, capacity: u32) -> Self {
+    pub(in crate::network_account_storage) fn new(
+        domain: Vec<u8>,
+        store: &'a mut T,
+        capacity: u32,
+    ) -> Self {
         Self {
             store,
             domain,
@@ -43,7 +47,7 @@ where
     }
 
     /// length of the IndexMap. Length of an empty or uninitialized IndexMap = 0.
-    pub fn length(&self) -> u32 {
+    pub fn length(&mut self) -> u32 {
         let key_len = [self.domain.as_slice(), &Self::PREFIX_LEN].concat();
         self.store.get(&key_len).map_or(0, |length_bytes| {
             u32::from_le_bytes(length_bytes.try_into().unwrap())
@@ -51,7 +55,7 @@ where
     }
 
     /// get value by key from IndexMap
-    pub fn get_by(&self, key: &[u8]) -> Option<V> {
+    pub fn get_by(&mut self, key: &[u8]) -> Option<V> {
         let index = self.index_of_key(key)?;
         self.get(index)
     }
@@ -88,13 +92,13 @@ where
         Ok(())
     }
 
-    pub(in crate::network) fn set_length(&mut self, length: u32) -> u32 {
+    pub(in crate::network_account_storage) fn set_length(&mut self, length: u32) -> u32 {
         let key_len = [self.domain.as_slice(), &Self::PREFIX_LEN].concat();
         self.store.set(&key_len, length.to_le_bytes().to_vec());
         length
     }
 
-    pub(in crate::network) fn index_of_key(&self, key: &[u8]) -> Option<u32> {
+    pub(in crate::network_account_storage) fn index_of_key(&mut self, key: &[u8]) -> Option<u32> {
         let key_ki = [self.domain.as_slice(), &Self::PREFIX_KEY_INDEX, key].concat();
         self.store
             .get(&key_ki)
@@ -104,7 +108,7 @@ where
     /// get value by index from IndexMap. Return None if
     /// 1. inputted index exceeds capacity
     /// 2. item is not found (unreachable)
-    pub fn get(&self, index: u32) -> Option<V> {
+    pub fn get(&mut self, index: u32) -> Option<V> {
         if index >= self.capacity {
             return None;
         }
@@ -123,7 +127,7 @@ where
     /// Set performs writes:
     /// - KI\[value.key\] = index
     /// - IV\[index\] = value
-    pub(in crate::network) fn set(&mut self, index: u32, value: V) {
+    pub(in crate::network_account_storage) fn set(&mut self, index: u32, value: V) {
         let key_iv = [
             self.domain.as_slice(),
             &Self::PREFIX_INDEX_VALUE,
@@ -136,7 +140,7 @@ where
         self.store.set(&key_iv, value.into());
     }
 
-    pub(in crate::network) fn delete(&mut self, index: u32, key: &[u8]) {
+    pub(in crate::network_account_storage) fn delete(&mut self, index: u32, key: &[u8]) {
         let key_iv = [
             self.domain.as_slice(),
             &Self::PREFIX_INDEX_VALUE,
@@ -199,13 +203,13 @@ fn test_index_map() {
         inner: HashMap<Vec<u8>, Vec<u8>>,
     }
     impl NetworkAccountStorage for KVStore {
-        fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
+        fn get(&mut self, key: &[u8]) -> Option<Vec<u8>> {
             match self.inner.get(&key.to_vec()) {
                 Some(v) => Some(v.to_owned()),
                 None => None,
             }
         }
-        fn contains(&self, key: &[u8]) -> bool {
+        fn contains(&mut self, key: &[u8]) -> bool {
             self.inner.contains_key(key)
         }
         fn set(&mut self, key: &[u8], value: Vec<u8>) {

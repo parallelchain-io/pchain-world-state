@@ -165,35 +165,6 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
         return Ok(self.storage_trie_map.get(address).unwrap());
     }
 
-    /// `upgrade` consume a WorldState::<V1> instance and return a WorldState::<V2>
-    pub fn upgrade(
-        worldstate: WorldState<'a, S, V1>,
-    ) -> Result<WorldState<'a, S, V2>, WorldStateError> {
-        let (account_v2, storage_info_map) = worldstate.accounts_trie.upgrade()?;
-        let mut storage_map: HashMap<PublicAddress, StorageTrie<'a, S, V2>> = HashMap::new();
-        for (address, storage_hash) in storage_info_map {
-            let storage_trie_v1: StorageTrie<'a, S, V1> = {
-                // suppose the worldstate v1 still have some unclosed changes
-                if worldstate.storage_trie_map.contains_key(&address) {
-                    worldstate
-                        .storage_trie_map
-                        .get(&address)
-                        .unwrap()
-                        .to_owned()
-                } else {
-                    StorageTrie::open(worldstate.db, storage_hash, &address)
-                }
-            };
-            let storage_trie_v2 = storage_trie_v1.upgrade()?;
-            storage_map.insert(address, storage_trie_v2);
-        }
-        Ok(WorldState {
-            accounts_trie: account_v2,
-            storage_trie_map: storage_map,
-            db: worldstate.db,
-        })
-    }
-
     /// `close` return all cached changes from the WorldState for caller to create App updates
     pub fn close(&mut self) -> Result<WorldStateChanges, WorldStateError> {
         let mut inserts = HashMap::new();
@@ -217,6 +188,32 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
             inserts,
             deletes,
             new_root_hash: accounts_change.new_root_hash,
+        })
+    }
+}
+
+/// implementations only for WorldState V1
+impl<'a, S: DB + Send + Sync + Clone> WorldState<'a, S, V1> {
+    /// `upgrade` consume a WorldState::<V1> instance and return a WorldState::<V2>
+    pub fn upgrade(self) -> Result<WorldState<'a, S, V2>, WorldStateError> {
+        let (account_v2, storage_info_map) = self.accounts_trie.upgrade()?;
+        let mut storage_map: HashMap<PublicAddress, StorageTrie<'a, S, V2>> = HashMap::new();
+        for (address, storage_hash) in storage_info_map {
+            let storage_trie_v1: StorageTrie<'a, S, V1> = {
+                // suppose the worldstate v1 still have some unclosed changes
+                if self.storage_trie_map.contains_key(&address) {
+                    self.storage_trie_map.get(&address).unwrap().to_owned()
+                } else {
+                    StorageTrie::open(self.db, storage_hash, &address)
+                }
+            };
+            let storage_trie_v2 = storage_trie_v1.upgrade()?;
+            storage_map.insert(address, storage_trie_v2);
+        }
+        Ok(WorldState {
+            accounts_trie: account_v2,
+            storage_trie_map: storage_map,
+            db: self.db,
         })
     }
 }

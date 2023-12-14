@@ -7,7 +7,6 @@
 //! [WorldStateChanges] store the WorldState changes since opening.For Fullnode and Runtime to create AppState updates
 //! [WorldState] read and update data in trie structrue.
 
-use core::prelude::v1;
 use std::collections::{HashMap, HashSet};
 
 use pchain_types::cryptography::{PublicAddress, Sha256Hash};

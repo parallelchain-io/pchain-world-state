@@ -833,7 +833,7 @@ pub fn upgrade() {
     println!("======================db after insertion =================================");
     println!("{:?}", &env.db);
     // upgrade
-    let mut ws_2 = WorldState::<DummyStorage, V1>::upgrade(new_ws_1).unwrap();
+    let mut ws_2 = new_ws_1.upgrade().unwrap();
     let ws_2_changes = ws_2.close().unwrap();
     env.db
         .apply_changes(ws_2_changes.inserts, ws_2_changes.deletes);

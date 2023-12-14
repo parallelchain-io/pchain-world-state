@@ -92,7 +92,6 @@ pub fn generate_accounts() -> HashMap<PublicAddress, AccountInstance> {
 }
 
 #[test]
-#[ignore]
 pub fn upgrade() {
     println!("start to build in v1....");
     let mut db = DummyStorage(HashMap::new());
@@ -122,7 +121,7 @@ pub fn upgrade() {
     println!("start upgrade..");
     let start_time = Instant::now();
     let ws1_new = WorldState::<DummyStorage, V1>::open(&db, ws_1_changes.new_root_hash);
-    let mut ws_2 = WorldState::<DummyStorage, V2>::upgrade(ws1_new).unwrap();
+    let mut ws_2 = ws1_new.upgrade().unwrap();
     let ws_2_changes = ws_2.close().unwrap();
     db.apply_changes(ws_2_changes.inserts, ws_2_changes.deletes);
     let end_time = Instant::now();
@@ -151,18 +150,23 @@ pub fn test_upgrade_v1_to_v2() {
     let mut ws_1 = WorldState::<_, V1>::new(&db);
 
     // Setup an account with some data in its storage
-    ws_1.account_trie_mut().set_balance(&[1u8; 32], 12345).unwrap();
+    ws_1.account_trie_mut()
+        .set_balance(&[1u8; 32], 12345)
+        .unwrap();
     for (key, value) in [
         (vec![31u8; 31], vec![1]),
         (vec![32u8; 32], vec![2, 2]),
         (vec![33u8; 33], vec![3, 3, 3]),
         (vec![64u8; 64], vec![4, 4, 4, 4]),
     ] {
-        ws_1.storage_trie_mut(&[1u8; 32]).unwrap().set(&key, value).unwrap();
+        ws_1.storage_trie_mut(&[1u8; 32])
+            .unwrap()
+            .set(&key, value)
+            .unwrap();
     }
-    
+
     // Upgrade
-    let mut ws_2 = WorldState::<_, V1>::upgrade(ws_1).unwrap();
+    let mut ws_2 = ws_1.upgrade().unwrap();
 
     // Save to DB
     let ws_2_changes = ws_2.close().unwrap();
@@ -179,7 +183,13 @@ pub fn test_upgrade_v1_to_v2() {
     // Check: account information is preserved
     let account = ws_2_all_accounts.get(&[1u8; 32]).unwrap();
     assert_eq!(
-        (account.balance, account.cbi_version, account.code.is_empty(), account.nonce, account.storage_hash.is_empty()), 
+        (
+            account.balance,
+            account.cbi_version,
+            account.code.is_empty(),
+            account.nonce,
+            account.storage_hash.is_empty()
+        ),
         (12345, None, true, 0, false) // storage hash has updated when close() was called
     );
 

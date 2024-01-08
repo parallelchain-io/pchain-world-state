@@ -21,8 +21,10 @@ pub trait DB {
 /// `KeyInstrumentedDB` is a wrapper around implementations of 'DB' that enforces
 /// that all KVs read from/written into persistent storage are properly formed KeyspacedKeys.
 /// All changes store into an in-memory write-collector instead of writing directly into persistent store
+///
+/// The reason that KeyInstrumentedDB struct exposed to public is we need it in benchmark test
 #[derive(Debug, Clone)]
-pub(crate) struct KeyInstrumentedDB<'a, S, V>
+pub struct KeyInstrumentedDB<'a, S, V>
 where
     S: DB + Send + Sync + Clone,
     V: VersionProvider + Send + Sync + Clone,
@@ -54,6 +56,11 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
             prefix,
             _type: PhantomData,
         }
+    }
+
+    /// `unsafe_new` is contructor of KeyInstrumentedDB for benchmark test
+    pub fn unsafe_new(storage: &'a S, prefix: Vec<u8>) -> KeyInstrumentedDB<S, V> {
+        Self::new(storage, prefix)
     }
 
     /// `get` is return value from memory cache `inserts` by input key

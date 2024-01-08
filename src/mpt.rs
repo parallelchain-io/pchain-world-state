@@ -17,14 +17,15 @@ use trie_db::{Trie, TrieDBBuilder, TrieDBMutBuilder, TrieMut};
 
 pub type Proof = Vec<Vec<u8>>;
 
-
 /// `Mpt` is struct to maintain the Merkle Patricia Trie tree as storage struct
 ///
 /// Merkle Tree: A hash tree in which each node’s hash is computed from its child nodes hashes.
 ///
 /// Patricia Trie: A efficient Radix Trie (r=16), a data structure in which “keys” represent the path one has to take to reach a node
+///
+/// The reason that Mpt struct exposed to public is we need it in benchmark test
 #[derive(Debug, Clone)]
-pub(crate) struct Mpt<'a, S, V>
+pub struct Mpt<'a, S, V>
 where
     S: DB + Send + Sync + Clone,
     V: VersionProvider + Send + Sync + Clone,
@@ -41,12 +42,13 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
     /// This function should be called only once, during the first startup of fullnode
     pub(crate) fn new(mut db: KeyInstrumentedDB<'a, S, V>) -> Self {
         // Even when opening an empty trie, `trie_db` expects a key to store a root node. We need to add this root node manually.
-        // This root node's hash (`empty_trie_root_hash`) must be the RefHasher::hash of 0u8. This is equal to the value of 
+        // This root node's hash (`empty_trie_root_hash`) must be the RefHasher::hash of 0u8. This is equal to the value of
         // `L:Codec::hashed_null_node()`, which is defined in `trie_db`.
-        let empty_trie_root_hash: Vec<u8> = RefHasher::hash(PREIMAGE_OF_EMPTY_TRIE_ROOT_HASH).to_vec();
+        let empty_trie_root_hash: Vec<u8> =
+            RefHasher::hash(PREIMAGE_OF_EMPTY_TRIE_ROOT_HASH).to_vec();
         let empty_trie_dummy_root_node: Vec<u8> = EMPTY_TRIE_DUMMY_ROOT_NODE.to_vec();
         db.put(empty_trie_root_hash, empty_trie_dummy_root_node);
-        
+
         // This `dummy_root_hash` variable is passed to TrieDBMutBuilder::new as the second parameter, but its value is not used,
         // because `new` immediately overwrites its value to be `L::Codec::hashed_null_node();`. It is just here to satisfy the
         // TrieDBMutBuilder::new's interface. Its value does not matter.
@@ -79,8 +81,13 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
         Mpt { db, root_hash }
     }
 
+    /// `unsafe_new` is contructor of MPT for benchmark test
+    pub fn unsafe_new(db: KeyInstrumentedDB<'a, S, V>) -> Self {
+        Self::new(db)
+    }
+
     /// `open` is to open the trie from give storage source and state_hash
-    pub(crate) fn open(db: KeyInstrumentedDB<'a, S, V>, root_hash: Sha256Hash) -> Self {
+    pub fn open(db: KeyInstrumentedDB<'a, S, V>, root_hash: Sha256Hash) -> Self {
         let mpt: Mpt<S, V> = Mpt { db, root_hash };
         mpt
     }
@@ -136,11 +143,8 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
             Version::V2 => {
                 let trie = TrieDBBuilder::<ExtensionLayout>::new(self, &self.root_hash).build();
                 let value = trie.get(key).map_err(|err| MptError::from(*err))?;
-                let proof_ret = generate_proof::<_, ExtensionLayout, _, _>(
-                    self,
-                    &self.root_hash,
-                    [key].iter(),
-                );
+                let proof_ret =
+                    generate_proof::<_, ExtensionLayout, _, _>(self, &self.root_hash, [key].iter());
                 let proof = proof_ret.map_err(|err| MptError::from(*err))?;
                 Ok((proof, value))
             }
@@ -168,7 +172,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
     /// `iterate_all` in DFS approach to iterate all key-value pairs in MPT by a function. The iteration may
     /// end earlier if it fails to obtain key-value from the trie (e.g. state_hash does
     /// not exist or missed some trie nodes), or the function returns error.
-    pub(crate) fn iterate_all<F, E>(&self, mut f: F) -> Result<(), E>
+    pub fn iterate_all<F, E>(&self, mut f: F) -> Result<(), E>
     where
         F: FnMut(Vec<u8>, Vec<u8>) -> Result<(), E>,
         E: From<MptError>,
@@ -237,7 +241,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
     /// Any value change will be reflected on `state_hash` change in WorldState
     ///
     /// Error when state_hash does not exist or missed some trie nodes
-    pub(crate) fn batch_set(&mut self, data: &HashMap<Vec<u8>, Vec<u8>>) -> Result<(), MptError> {
+    pub fn batch_set(&mut self, data: &HashMap<Vec<u8>, Vec<u8>>) -> Result<(), MptError> {
         let mut cur_root_hash = self.root_hash;
         let new_root_hash = {
             match <V>::version() {
@@ -351,18 +355,20 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
     }
 
     /// `close` is return and flush cache changes in [DB](crate::db::DB). Also return the updated state_hash
-    pub(crate) fn close(&mut self) -> MptChanges {
+    pub fn close(&mut self) -> MptChanges {
         let db_changes = self.db.close();
         MptChanges(db_changes.0, db_changes.1, self.root_hash)
     }
 }
 
 /// `MptChanges` is a wrapper of changes in [Mpt] when call function close()
+///
+/// The reason that MptChanges struct exposed to public is we need it in benchmark test
 #[derive(Debug, Clone)]
-pub(crate) struct MptChanges(
-    pub(crate) HashMap<Vec<u8>, Vec<u8>>,
-    pub(crate) HashSet<Vec<u8>>,
-    pub(crate) Sha256Hash,
+pub struct MptChanges(
+    pub HashMap<Vec<u8>, Vec<u8>>,
+    pub HashSet<Vec<u8>>,
+    pub Sha256Hash,
 );
 
 impl<'a, S: DB + Send + Sync + Clone> Mpt<'a, S, crate::V1> {
@@ -636,7 +642,8 @@ mod test {
         env.db.apply_changes(mpt_change.0, mpt_change.1);
         let db = KeyInstrumentedDB::<DummyStorage, V1>::new(&env.db, env.address.to_vec());
         let ret = Mpt::<DummyStorage, V1>::open(db, mpt_change.2);
-        ret.get(&RefHasher::hash(PREIMAGE_OF_EMPTY_TRIE_ROOT_HASH)).unwrap();
+        ret.get(&RefHasher::hash(PREIMAGE_OF_EMPTY_TRIE_ROOT_HASH))
+            .unwrap();
     }
 
     #[test]

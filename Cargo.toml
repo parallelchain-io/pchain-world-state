@@ -15,6 +15,13 @@ reference-trie = "0.29.0"
 # the newest version is 0.28.0, but reference-trie lib depends on the trait `TrieLayout` in trie-db 0.27.0
 trie-db = "=0.27.0"
 
+[[bench]]
+name = "benchmark"
+harness = false
+
+[lib]
+bench = false
+
 [dev-dependencies]
 base64url = "0.1.0"
 pchain-types = { git = "https://github.com/parallelchain-io/pchain-types-rust", features = [
@@ -22,3 +29,6 @@ pchain-types = { git = "https://github.com/parallelchain-io/pchain-types-rust", 
 ] }
 rand = "0.8.5"
 rand_chacha = "0.3.1"
+rocksdb = "0.19"
+temp-dir = "0.1.11"
+criterion = "0.5.1"

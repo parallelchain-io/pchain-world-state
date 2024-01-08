@@ -15,19 +15,8 @@ use std::collections::{HashMap, HashSet};
 use trie_db::proof::generate_proof;
 use trie_db::{Trie, TrieDBBuilder, TrieDBMutBuilder, TrieMut};
 
-type Hash256 = [u8; 32];
-
 pub type Proof = Vec<Vec<u8>>;
-const NULL_NODE_KEY: &[u8] = &[0_u8];
-const NULL_NODE_VALUE: &[u8] = &[0_u8];
 
-/// `MptChanges` is a wrapper of changes in [Mpt] when call function close()
-#[derive(Debug, Clone)]
-pub(crate) struct MptChanges(
-    pub(crate) HashMap<Vec<u8>, Vec<u8>>,
-    pub(crate) HashSet<Vec<u8>>,
-    pub(crate) Sha256Hash,
-);
 
 /// `Mpt` is struct to maintain the Merkle Patricia Trie tree as storage struct
 ///
@@ -44,24 +33,33 @@ where
     root_hash: Sha256Hash,
 }
 
+const PREIMAGE_OF_EMPTY_TRIE_ROOT_HASH: &[u8] = &[0_u8];
+const EMPTY_TRIE_DUMMY_ROOT_NODE: &[u8] = &[0_u8];
+
 impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> Mpt<'a, S, V> {
     /// `new` is to create a new Trie with empty state_hash
     /// This function should be called only once, during the first startup of fullnode
     pub(crate) fn new(mut db: KeyInstrumentedDB<'a, S, V>) -> Self {
-        // build an empty MPT for genesis world state
-        let mut default_root_hash = Default::default();
-        let key: Vec<u8> = RefHasher::hash(NULL_NODE_KEY).to_vec();
-        let value: Vec<u8> = NULL_NODE_VALUE.to_vec();
-        db.put(key, value);
+        // Even when opening an empty trie, `trie_db` expects a key to store a root node. We need to add this root node manually.
+        // This root node's hash (`empty_trie_root_hash`) must be the RefHasher::hash of 0u8. This is equal to the value of 
+        // `L:Codec::hashed_null_node()`, which is defined in `trie_db`.
+        let empty_trie_root_hash: Vec<u8> = RefHasher::hash(PREIMAGE_OF_EMPTY_TRIE_ROOT_HASH).to_vec();
+        let empty_trie_dummy_root_node: Vec<u8> = EMPTY_TRIE_DUMMY_ROOT_NODE.to_vec();
+        db.put(empty_trie_root_hash, empty_trie_dummy_root_node);
+        
+        // This `dummy_root_hash` variable is passed to TrieDBMutBuilder::new as the second parameter, but its value is not used,
+        // because `new` immediately overwrites its value to be `L::Codec::hashed_null_node();`. It is just here to satisfy the
+        // TrieDBMutBuilder::new's interface. Its value does not matter.
+        let mut dummy_root_hash = [0u8; 32];
         let mut genesis_mpt: Mpt<S, V> = Mpt {
             db: db.clone(),
-            root_hash: default_root_hash,
+            root_hash: dummy_root_hash,
         };
         let root_hash = match <V>::version() {
             Version::V1 => {
                 let mut trie = TrieDBMutBuilder::<NoExtensionLayout>::new(
                     &mut genesis_mpt,
-                    &mut default_root_hash,
+                    &mut dummy_root_hash,
                 )
                 .build();
                 trie.commit();
@@ -71,7 +69,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
             Version::V2 => {
                 let mut trie = TrieDBMutBuilder::<ExtensionLayout>::new(
                     &mut genesis_mpt,
-                    &mut default_root_hash,
+                    &mut dummy_root_hash,
                 )
                 .build();
                 trie.commit();
@@ -359,12 +357,20 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
     }
 }
 
+/// `MptChanges` is a wrapper of changes in [Mpt] when call function close()
+#[derive(Debug, Clone)]
+pub(crate) struct MptChanges(
+    pub(crate) HashMap<Vec<u8>, Vec<u8>>,
+    pub(crate) HashSet<Vec<u8>>,
+    pub(crate) Sha256Hash,
+);
+
 impl<'a, S: DB + Send + Sync + Clone> Mpt<'a, S, crate::V1> {
     pub(crate) fn deinit_and_upgrade(mut self) -> Result<Mpt<'a, S, crate::V2>, MptError> {
         // deinit the the V1 mpt
-        let empty_root_hash = RefHasher::hash(NULL_NODE_KEY).to_vec();
+        let empty_root_hash = RefHasher::hash(PREIMAGE_OF_EMPTY_TRIE_ROOT_HASH).to_vec();
         // check if root_hash is equal to empty root hash
-        if self.root_hash() != RefHasher::hash(NULL_NODE_KEY) {
+        if self.root_hash() != RefHasher::hash(PREIMAGE_OF_EMPTY_TRIE_ROOT_HASH) {
             return Err(MptError::InvalidStateRoot);
         }
         let trie = TrieDBBuilder::<NoExtensionLayout>::new(&self, &self.root_hash).build();
@@ -378,8 +384,8 @@ impl<'a, S: DB + Send + Sync + Clone> Mpt<'a, S, crate::V1> {
         let mut new_storage: KeyInstrumentedDB<'a, S, crate::V2> = self.db.upgrade();
         // compute root_hash for a empty trie in V2
         let mut default_root_hash = Default::default();
-        let key: Vec<u8> = RefHasher::hash(NULL_NODE_KEY).to_vec();
-        let value: Vec<u8> = NULL_NODE_VALUE.to_vec();
+        let key: Vec<u8> = RefHasher::hash(PREIMAGE_OF_EMPTY_TRIE_ROOT_HASH).to_vec();
+        let value: Vec<u8> = EMPTY_TRIE_DUMMY_ROOT_NODE.to_vec();
         new_storage.put(key, value);
         let mut genesis_mpt: Mpt<S, crate::V2> = Mpt {
             db: new_storage.clone(),
@@ -398,6 +404,8 @@ impl<'a, S: DB + Send + Sync + Clone> Mpt<'a, S, crate::V1> {
         })
     }
 }
+
+type Hash256 = [u8; 32];
 
 /// Implemented to meet a requirement of Parity's Base-16 Modified Merkle Tree ("Trie")
 ///
@@ -434,7 +442,7 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone>
 
     /// Remove an item previously inserted.
     fn remove(&mut self, key: &Hash256, nibble_prefix: Prefix) {
-        if key[..] == RefHasher::hash(NULL_NODE_KEY) {
+        if key[..] == RefHasher::hash(PREIMAGE_OF_EMPTY_TRIE_ROOT_HASH) {
             return;
         }
         let key = prefixed_trie_node_key::<RefHasher>(key, nibble_prefix);
@@ -617,8 +625,8 @@ mod test {
         let db = KeyInstrumentedDB::<DummyStorage, V1>::new(&env.db, env.address.to_vec());
         let mut ret = Mpt::<DummyStorage, V1>::open(db, mpt_change.2);
         ret.set(
-            &RefHasher::hash(NULL_NODE_KEY),
-            RefHasher::hash(NULL_NODE_VALUE).to_vec(),
+            &RefHasher::hash(PREIMAGE_OF_EMPTY_TRIE_ROOT_HASH),
+            RefHasher::hash(EMPTY_TRIE_DUMMY_ROOT_NODE).to_vec(),
         )
         .unwrap();
         let mpt_change = ret.close();
@@ -628,13 +636,13 @@ mod test {
         env.db.apply_changes(mpt_change.0, mpt_change.1);
         let db = KeyInstrumentedDB::<DummyStorage, V1>::new(&env.db, env.address.to_vec());
         let ret = Mpt::<DummyStorage, V1>::open(db, mpt_change.2);
-        ret.get(&RefHasher::hash(NULL_NODE_KEY)).unwrap();
+        ret.get(&RefHasher::hash(PREIMAGE_OF_EMPTY_TRIE_ROOT_HASH)).unwrap();
     }
 
     #[test]
     pub fn test() {
-        println!("{:?}", RefHasher::hash(NULL_NODE_KEY));
-        println!("{:?}", RefHasher::hash(NULL_NODE_VALUE));
+        println!("{:?}", RefHasher::hash(PREIMAGE_OF_EMPTY_TRIE_ROOT_HASH));
+        println!("{:?}", RefHasher::hash(EMPTY_TRIE_DUMMY_ROOT_NODE));
     }
 
     #[test]

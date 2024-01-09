@@ -2,9 +2,10 @@ use criterion::{criterion_group, criterion_main, Bencher, BenchmarkId, Criterion
 use hash_db::Hasher;
 use keccak_hasher::KeccakHasher;
 use pchain_types::cryptography::{PublicAddress, Sha256Hash};
-use pchain_world_state::{db::KeyInstrumentedDB, Mpt, MptError, V1, V2};
+use pchain_world_state::{db::KeyInstrumentedDB, Mpt, MptError, WorldState, V1, V2};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rocksdb::{DBWithThreadMode, MultiThreaded};
+use statrs::statistics::Statistics;
 use std::{
     collections::{HashMap, HashSet},
     env::temp_dir,
@@ -12,8 +13,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 use temp_dir::TempDir;
-
-/// `mpt_write_benchmark` is benchmark test for mpt insert
+/// `mpt_write_benchmark` is benchmark test for MPT insert
 fn mpt_write_benchmark(c: &mut Criterion) {
     // generate 100,000 pair of <key, value> dataset
     let dataset = generate_random_value_pair(100000);
@@ -32,6 +32,8 @@ fn mpt_write_benchmark(c: &mut Criterion) {
             b.iter(|| mpt_v1_insert(&input_v1.0, Arc::clone(&input_v1.1), Arc::clone(&db_dir_v1)))
         },
     );
+    // measure db instances' status
+    measure_db_stats(Arc::clone(&db_paths_v1));
     remove_all_db(db_paths_v1, db_dir_v1);
 
     // benchmark MPT V2
@@ -57,10 +59,12 @@ fn mpt_write_benchmark(c: &mut Criterion) {
             })
         },
     );
+    // measure db instances' status
+    measure_db_stats(Arc::clone(&db_paths_v2));
     remove_all_db(db_paths_v2, db_dir_v2);
 }
 
-/// `mpt_read_benchmark` is benchmark test for mpt read
+/// `mpt_read_benchmark` is benchmark test for MPT read
 fn mpt_read_benchmark(c: &mut Criterion) {
     // generate 100,000 pair of <key, value> dataset
     let dataset = generate_random_value_pair(100000);
@@ -96,8 +100,56 @@ fn mpt_read_benchmark(c: &mut Criterion) {
     remove_all_db(db_paths_v2, db_dir_v2);
 }
 
+/// `storage_trie_write_benchmark` is benchmark test for WorldState::StorageTrie write
 fn storage_trie_write_benchmark(c: &mut Criterion) {
-    {}
+    // generate 100,000 pair of <key, value> dataset
+    let dataset = generate_random_value_pair(100000);
+    // benchmark test for storage_trie V1
+    let db_dir_v1 = generate_temp_dir();
+    let db_paths_v1 = Arc::new(RwLock::new(Vec::<PathBuf>::new()));
+    let input_v1 = (
+        dataset.clone(),
+        Arc::clone(&db_paths_v1),
+        Arc::clone(&db_dir_v1),
+    );
+    c.bench_with_input(
+        BenchmarkId::new("storage_trie_v1_insert", "100,000 <key, value> iteration"),
+        &input_v1,
+        |b, input_v1| {
+            b.iter(|| {
+                storage_trie_v1_insert(&input_v1.0, Arc::clone(&input_v1.1), Arc::clone(&db_dir_v1))
+            })
+        },
+    );
+    // measure db instances' status
+    measure_db_stats(Arc::clone(&db_paths_v1));
+    remove_all_db(db_paths_v1, db_dir_v1);
+
+    // benchmark test for storage_trie V1
+    // go through dataset, hash the key to 32 bytes is its length great than 32 bytes
+    let db_dir_v2 = generate_temp_dir();
+    let db_paths_v2 = Arc::new(RwLock::new(Vec::<PathBuf>::new()));
+    let input_v2 = (
+        dataset.clone(),
+        Arc::clone(&db_paths_v2),
+        Arc::clone(&db_dir_v2),
+    );
+    c.bench_with_input(
+        BenchmarkId::new("storage_trie_v2_insert", "100,000 <key, value> iteration"),
+        &input_v2,
+        |b, input_v2| {
+            b.iter(|| {
+                storage_trie_v2_insert(
+                    &input_v2.0,
+                    Arc::clone(&input_v2.1),
+                    Arc::clone(&input_v2.2),
+                )
+            })
+        },
+    );
+    // measure db instances' status
+    measure_db_stats(Arc::clone(&db_paths_v2));
+    remove_all_db(db_paths_v2, db_dir_v2);
 }
 
 /// `mpt_v1_insert` is helper function for MPT insertion benchmark test
@@ -182,6 +234,78 @@ fn mpt_v2_iter(root_hash: Sha256Hash, db_paths: DbPaths) {
         key.append(&mut value);
         Ok::<(), MptError>(())
     });
+}
+
+/// `storage_trie_v1_insert` is helper function for StorageTrie insert benchmark test
+fn storage_trie_v1_insert(
+    dataset: &HashMap<Vec<u8>, Vec<u8>>,
+    db_paths: DbPaths,
+    db_dir: DbDir,
+) -> Sha256Hash {
+    let path = generate_random_path(db_paths, db_dir);
+    let test_db = TestDB::open_db(path.clone());
+    // create a dummy account address
+    let address: PublicAddress = base64url::decode("x7eiywH_8YVHQkSgjZk3EXdLU3FGo4VaV_6qi-hzOKI")
+        .unwrap()
+        .try_into()
+        .unwrap();
+    let mut ws = WorldState::<TestDB, V1>::new(&test_db);
+    ws.storage_trie_mut(&address)
+        .unwrap()
+        .batch_set(dataset)
+        .unwrap();
+    let ws_changes = ws.close().unwrap();
+    test_db.write_batch(ws_changes.inserts, ws_changes.deletes);
+    ws_changes.new_root_hash
+}
+
+/// `storage_trie_v2_insert` is helper function for StorageTrie insert benchmark test
+fn storage_trie_v2_insert(
+    dataset: &HashMap<Vec<u8>, Vec<u8>>,
+    db_paths: DbPaths,
+    db_dir: DbDir,
+) -> Sha256Hash {
+    let path = generate_random_path(db_paths, db_dir);
+    let test_db = TestDB::open_db(path.clone());
+    // create a dummy account address
+    let address: PublicAddress = base64url::decode("x7eiywH_8YVHQkSgjZk3EXdLU3FGo4VaV_6qi-hzOKI")
+        .unwrap()
+        .try_into()
+        .unwrap();
+    let mut ws = WorldState::<TestDB, V2>::new(&test_db);
+    ws.storage_trie_mut(&address)
+        .unwrap()
+        .batch_set(dataset)
+        .unwrap();
+    let ws_changes = ws.close().unwrap();
+    test_db.write_batch(ws_changes.inserts, ws_changes.deletes);
+    ws_changes.new_root_hash
+}
+
+/// `measure_db_stats` provide db stats of RocksDB instance after insertion
+fn measure_db_stats(db_paths: DbPaths) {
+    let mut num_of_keys: Vec<f64> = Vec::new();
+    let mut live_data_size: Vec<f64> = Vec::new();
+    for path in db_paths.read().unwrap().iter() {
+        let test_db = TestDB::open_db(path.clone());
+        let num_of_key = test_db
+            .db
+            .property_value(rocksdb::properties::ESTIMATE_NUM_KEYS)
+            .unwrap()
+            .unwrap();
+        let data_size = test_db
+            .db
+            .property_value(rocksdb::properties::ESTIMATE_LIVE_DATA_SIZE)
+            .unwrap()
+            .unwrap();
+        num_of_keys.push(num_of_key.parse().unwrap());
+        live_data_size.push(data_size.parse().unwrap());
+    }
+    println!("mean of number of keys: {}", Statistics::mean(num_of_keys));
+    println!(
+        "mean of live data size in KB: {}",
+        (Statistics::mean(live_data_size) / 1024_f64)
+    )
 }
 
 /// `generate random_value_pair` is to generate `target_num` pairs of <Vec<u8>, Vec<u8>> as input dataset for benchmark test
@@ -292,6 +416,6 @@ criterion_group!(
     benches,
     mpt_write_benchmark,
     mpt_read_benchmark,
-    // storage_trie_write_benchmark
+    storage_trie_write_benchmark
 );
 criterion_main!(benches);

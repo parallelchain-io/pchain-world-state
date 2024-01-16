@@ -31,7 +31,7 @@
 pub mod accounts_trie;
 pub use accounts_trie::*;
 
-mod db;
+pub mod db;
 pub use db::DB;
 
 pub mod error;
@@ -40,7 +40,8 @@ pub use error::*;
 pub mod storage_trie;
 pub use storage_trie::*;
 
-mod mpt;
+pub mod mpt;
+pub use mpt::*;
 
 pub mod world_state;
 pub use world_state::*;

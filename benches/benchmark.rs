@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Bencher, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use hash_db::Hasher;
 use keccak_hasher::KeccakHasher;
 use pchain_types::cryptography::{PublicAddress, Sha256Hash};
@@ -8,7 +8,6 @@ use rocksdb::{DBWithThreadMode, MultiThreaded};
 use statrs::statistics::Statistics;
 use std::{
     collections::{HashMap, HashSet},
-    env::temp_dir,
     path::PathBuf,
     sync::{Arc, RwLock},
 };

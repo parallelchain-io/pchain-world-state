@@ -7,10 +7,10 @@
 
 use crate::db::{KeyInstrumentedDB, DB};
 use crate::error::MptError;
-use crate::version::{Version, VersionProvider};
+use crate::version::VersionProvider;
 use hash_db::{AsHashDB, HashDB, HashDBRef, Hasher as KeyHasher, Prefix};
 use pchain_types::cryptography::Sha256Hash;
-use reference_trie::{ExtensionLayout, NoExtensionLayout, RefHasher};
+use reference_trie::{NoExtensionLayout, RefHasher};
 use std::collections::{HashMap, HashSet};
 use trie_db::proof::generate_proof;
 use trie_db::{Trie, TrieDBBuilder, TrieDBMutBuilder, TrieMut};
@@ -57,26 +57,12 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
             db: db.clone(),
             root_hash: dummy_root_hash,
         };
-        let root_hash = match <V>::version() {
-            Version::V1 => {
-                let mut trie = TrieDBMutBuilder::<NoExtensionLayout>::new(
-                    &mut genesis_mpt,
-                    &mut dummy_root_hash,
-                )
-                .build();
-                trie.commit();
-                *trie.root()
-            }
-
-            Version::V2 => {
-                let mut trie = TrieDBMutBuilder::<ExtensionLayout>::new(
-                    &mut genesis_mpt,
-                    &mut dummy_root_hash,
-                )
-                .build();
-                trie.commit();
-                *trie.root()
-            }
+        let root_hash = {
+            let mut trie =
+                TrieDBMutBuilder::<NoExtensionLayout>::new(&mut genesis_mpt, &mut dummy_root_hash)
+                    .build();
+            trie.commit();
+            *trie.root()
         };
         Mpt { db, root_hash }
     }
@@ -98,18 +84,9 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
     ///
     /// Error when state_hash does not exist or missed some trie nodes
     pub(crate) fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, MptError> {
-        match <V>::version() {
-            Version::V1 => {
-                let trie = TrieDBBuilder::<NoExtensionLayout>::new(self, &self.root_hash).build();
-                let value = trie.get(key).map_err(|err| MptError::from(*err))?;
-                Ok(value)
-            }
-            Version::V2 => {
-                let trie = TrieDBBuilder::<ExtensionLayout>::new(self, &self.root_hash).build();
-                let value = trie.get(key).map_err(|err| MptError::from(*err))?;
-                Ok(value)
-            }
-        }
+        let trie = TrieDBBuilder::<NoExtensionLayout>::new(self, &self.root_hash).build();
+        let value = trie.get(key).map_err(|err| MptError::from(*err))?;
+        Ok(value)
     }
 
     /// `root_hash` return the current root_hash of trie
@@ -128,45 +105,21 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
         &self,
         key: &Vec<u8>,
     ) -> Result<(Proof, Option<Vec<u8>>), MptError> {
-        match <V>::version() {
-            Version::V1 => {
-                let trie = TrieDBBuilder::<NoExtensionLayout>::new(self, &self.root_hash).build();
-                let value = trie.get(key).map_err(|err| MptError::from(*err))?;
-                let proof_ret = generate_proof::<_, NoExtensionLayout, _, _>(
-                    self,
-                    &self.root_hash,
-                    [key].iter(),
-                );
-                let proof = proof_ret.map_err(|err| MptError::from(*err))?;
-                Ok((proof, value))
-            }
-            Version::V2 => {
-                let trie = TrieDBBuilder::<ExtensionLayout>::new(self, &self.root_hash).build();
-                let value = trie.get(key).map_err(|err| MptError::from(*err))?;
-                let proof_ret =
-                    generate_proof::<_, ExtensionLayout, _, _>(self, &self.root_hash, [key].iter());
-                let proof = proof_ret.map_err(|err| MptError::from(*err))?;
-                Ok((proof, value))
-            }
-        }
+        let trie = TrieDBBuilder::<NoExtensionLayout>::new(self, &self.root_hash).build();
+        let value = trie.get(key).map_err(|err| MptError::from(*err))?;
+        let proof_ret =
+            generate_proof::<_, NoExtensionLayout, _, _>(self, &self.root_hash, [key].iter());
+        let proof = proof_ret.map_err(|err| MptError::from(*err))?;
+        Ok((proof, value))
     }
 
     /// `contains` check is the key exists in a trie
     ///
     /// Error when state_hash does not exist or missed some trie nodes
     pub(crate) fn contains(&self, key: &[u8]) -> Result<bool, MptError> {
-        match <V>::version() {
-            Version::V1 => {
-                let trie = TrieDBBuilder::<NoExtensionLayout>::new(self, &self.root_hash).build();
-                let exsits = trie.contains(key).map_err(|err| MptError::from(*err))?;
-                Ok(exsits)
-            }
-            Version::V2 => {
-                let trie = TrieDBBuilder::<ExtensionLayout>::new(self, &self.root_hash).build();
-                let exsits = trie.contains(key).map_err(|err| MptError::from(*err))?;
-                Ok(exsits)
-            }
-        }
+        let trie = TrieDBBuilder::<NoExtensionLayout>::new(self, &self.root_hash).build();
+        let exsits = trie.contains(key).map_err(|err| MptError::from(*err))?;
+        Ok(exsits)
     }
 
     /// `iterate_all` in DFS approach to iterate all key-value pairs in MPT by a function. The iteration may
@@ -177,23 +130,11 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
         F: FnMut(Vec<u8>, Vec<u8>) -> Result<(), E>,
         E: From<MptError>,
     {
-        match <V>::version() {
-            Version::V1 => {
-                let trie = TrieDBBuilder::<NoExtensionLayout>::new(self, &self.root_hash).build();
-                let trie_iter = trie.iter().map_err(|err| MptError::from(*err))?;
-                for item in trie_iter {
-                    let (key, value) = item.map_err(|err| MptError::from(*err))?;
-                    f(key, value)?;
-                }
-            }
-            Version::V2 => {
-                let trie = TrieDBBuilder::<ExtensionLayout>::new(self, &self.root_hash).build();
-                let trie_iter = trie.iter().map_err(|err| MptError::from(*err))?;
-                for item in trie_iter {
-                    let (key, value) = item.map_err(|err| MptError::from(*err))?;
-                    f(key, value)?;
-                }
-            }
+        let trie = TrieDBBuilder::<NoExtensionLayout>::new(self, &self.root_hash).build();
+        let trie_iter = trie.iter().map_err(|err| MptError::from(*err))?;
+        for item in trie_iter {
+            let (key, value) = item.map_err(|err| MptError::from(*err))?;
+            f(key, value)?;
         }
         Ok(())
     }
@@ -205,32 +146,14 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
     pub(crate) fn set(&mut self, key: &[u8], value: Vec<u8>) -> Result<(), MptError> {
         let mut cur_root_hash = self.root_hash;
         let new_root_hash = {
-            match <V>::version() {
-                Version::V1 => {
-                    let mut trie = TrieDBMutBuilder::<NoExtensionLayout>::from_existing(
-                        self,
-                        &mut cur_root_hash,
-                    )
+            let mut trie =
+                TrieDBMutBuilder::<NoExtensionLayout>::from_existing(self, &mut cur_root_hash)
                     .build();
-                    let _ = trie
-                        .insert(key, &value)
-                        .map_err(|err| MptError::from(*err))?;
-                    trie.commit();
-                    *trie.root()
-                }
-                Version::V2 => {
-                    let mut trie = TrieDBMutBuilder::<ExtensionLayout>::from_existing(
-                        self,
-                        &mut cur_root_hash,
-                    )
-                    .build();
-                    let _ = trie
-                        .insert(key, &value)
-                        .map_err(|err| MptError::from(*err))?;
-                    trie.commit();
-                    *trie.root()
-                }
-            }
+            let _ = trie
+                .insert(key, &value)
+                .map_err(|err| MptError::from(*err))?;
+            trie.commit();
+            *trie.root()
         };
 
         self.root_hash = new_root_hash;
@@ -244,36 +167,16 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
     pub fn batch_set(&mut self, data: &HashMap<Vec<u8>, Vec<u8>>) -> Result<(), MptError> {
         let mut cur_root_hash = self.root_hash;
         let new_root_hash = {
-            match <V>::version() {
-                Version::V1 => {
-                    let mut trie = TrieDBMutBuilder::<NoExtensionLayout>::from_existing(
-                        self,
-                        &mut cur_root_hash,
-                    )
+            let mut trie =
+                TrieDBMutBuilder::<NoExtensionLayout>::from_existing(self, &mut cur_root_hash)
                     .build();
-                    for (key, value) in data.iter() {
-                        let _ = trie
-                            .insert(key, value)
-                            .map_err(|err| MptError::from(*err))?;
-                    }
-                    trie.commit();
-                    *trie.root()
-                }
-                Version::V2 => {
-                    let mut trie = TrieDBMutBuilder::<ExtensionLayout>::from_existing(
-                        self,
-                        &mut cur_root_hash,
-                    )
-                    .build();
-                    for (key, value) in data.iter() {
-                        let _ = trie
-                            .insert(key, value)
-                            .map_err(|err| MptError::from(*err))?;
-                    }
-                    trie.commit();
-                    *trie.root()
-                }
+            for (key, value) in data.iter() {
+                let _ = trie
+                    .insert(key, value)
+                    .map_err(|err| MptError::from(*err))?;
             }
+            trie.commit();
+            *trie.root()
         };
         self.root_hash = new_root_hash;
         Ok(())
@@ -289,28 +192,12 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
         }
         let mut cur_root_hash = self.root_hash;
         let new_root_hash = {
-            match <V>::version() {
-                Version::V1 => {
-                    let mut trie = TrieDBMutBuilder::<NoExtensionLayout>::from_existing(
-                        self,
-                        &mut cur_root_hash,
-                    )
+            let mut trie =
+                TrieDBMutBuilder::<NoExtensionLayout>::from_existing(self, &mut cur_root_hash)
                     .build();
-                    let _ = trie.remove(key).map_err(|err| MptError::from(*err))?;
-                    trie.commit();
-                    *trie.root()
-                }
-                Version::V2 => {
-                    let mut trie = TrieDBMutBuilder::<ExtensionLayout>::from_existing(
-                        self,
-                        &mut cur_root_hash,
-                    )
-                    .build();
-                    let _ = trie.remove(key).map_err(|err| MptError::from(*err))?;
-                    trie.commit();
-                    *trie.root()
-                }
-            }
+            let _ = trie.remove(key).map_err(|err| MptError::from(*err))?;
+            trie.commit();
+            *trie.root()
         };
         self.root_hash = new_root_hash;
         Ok(())
@@ -323,32 +210,14 @@ impl<'a, S: DB + Send + Sync + Clone, V: VersionProvider + Send + Sync + Clone> 
     pub(crate) fn batch_remove(&mut self, key_set: &HashSet<Vec<u8>>) -> Result<(), MptError> {
         let mut cur_root_hash = self.root_hash;
         let new_root_hash = {
-            match <V>::version() {
-                Version::V1 => {
-                    let mut trie = TrieDBMutBuilder::<NoExtensionLayout>::from_existing(
-                        self,
-                        &mut cur_root_hash,
-                    )
+            let mut trie =
+                TrieDBMutBuilder::<NoExtensionLayout>::from_existing(self, &mut cur_root_hash)
                     .build();
-                    for key in key_set.iter() {
-                        let _ = trie.remove(key).map_err(|err| MptError::from(*err));
-                    }
-                    trie.commit();
-                    *trie.root()
-                }
-                Version::V2 => {
-                    let mut trie = TrieDBMutBuilder::<ExtensionLayout>::from_existing(
-                        self,
-                        &mut cur_root_hash,
-                    )
-                    .build();
-                    for key in key_set.iter() {
-                        let _ = trie.remove(key).map_err(|err| MptError::from(*err));
-                    }
-                    trie.commit();
-                    *trie.root()
-                }
+            for key in key_set.iter() {
+                let _ = trie.remove(key).map_err(|err| MptError::from(*err));
             }
+            trie.commit();
+            *trie.root()
         };
         self.root_hash = new_root_hash;
         Ok(())
@@ -398,9 +267,11 @@ impl<'a, S: DB + Send + Sync + Clone> Mpt<'a, S, crate::V1> {
             root_hash: default_root_hash,
         };
         let new_root_hash = {
-            let mut trie =
-                TrieDBMutBuilder::<ExtensionLayout>::new(&mut genesis_mpt, &mut default_root_hash)
-                    .build();
+            let mut trie = TrieDBMutBuilder::<NoExtensionLayout>::new(
+                &mut genesis_mpt,
+                &mut default_root_hash,
+            )
+            .build();
             trie.commit();
             *trie.root()
         };

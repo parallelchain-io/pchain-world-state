@@ -179,14 +179,7 @@ pub(crate) fn storage_key<V: VersionProvider>(key: &Vec<u8>) -> Vec<u8> {
         }
         Version::V2 => {
             let mut storage_key: Vec<u8> = Vec::new();
-            // Here `RefHasher` must be using the Keccak256 hash function.
-            if key.len() < RefHasher::LENGTH {
-                // 32 bytes
-                storage_key.extend_from_slice(key);
-            } else {
-                let hashed_key = RefHasher::hash(key);
-                storage_key.extend_from_slice(&hashed_key);
-            }
+            storage_key.extend_from_slice(key);
             storage_key
         }
     }
